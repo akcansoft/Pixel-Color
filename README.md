@@ -1,6 +1,6 @@
 # Pixel Color
 
-This is a simple open-source program written in the AutoHotkey v2 scripting language that displays the color of the pixel at the current mouse cursor position. It shows the color code in both hexadecimal and decimal formats for easy reference
+This is a simple open-source program written in the [AutoHotkey](https://www.autohotkey.com) v2 scripting language that displays the color of the pixel at the current mouse cursor position. It shows the color code in both hexadecimal and decimal formats for easy reference
 
 ![screen Shot](https://github.com/akcansoft/Pixel-Color/blob/main/screenshot_1.0.png)
 
@@ -27,7 +27,7 @@ Download [Download Pixel Color v1.0](https://github.com/akcansoft/Pixel-Color/bl
 
 ## Source Code
 
-The source code for this program is available in the [src folder](https://github.com/akcansoft/Pixel-Color/tree/main/src). To use the program source code, you'll need to have AutoHotkey v2 installed on your system. You can run the script directly using the AutoHotkey interpreter. Alternatively, you can compile the script into an executable file for easier distribution.
+The source code for this program is available in the [src folder](https://github.com/akcansoft/Pixel-Color/tree/main/src). To use the program source code, you'll need to have [AutoHotkey](https://www.autohotkey.com) v2 installed on your system. You can run the script directly using the [AutoHotkey](https://www.autohotkey.com) interpreter. Alternatively, you can compile the script into an executable file for easier distribution.
 
 ## Dependencies
 
