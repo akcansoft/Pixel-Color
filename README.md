@@ -11,7 +11,7 @@ This is a simple open-source program written in the [AutoHotkey](https://www.aut
 - Allows copying the color codes to the clipboard.
 - Shows the red, green, and blue values of the color in both hexadecimal and decimal formats.
 - Displays a square representing the color at the cursor position.
-- Supports pausing and resuming the real-time display with the F1 key.
+- Supports pausing and resuming the real-time display with the <kbd>Ctrl+F12</kbd> key.
 
 ## How to Use
 
@@ -19,7 +19,7 @@ This is a simple open-source program written in the [AutoHotkey](https://www.aut
 2. Move your mouse cursor around the screen.
 3. The color of the pixel at the cursor position will be displayed.
 4. Use the provided buttons to copy the color code in hexadecimal or decimal format to the clipboard.
-5. Press the F1 key to pause or resume the real-time display.
+5. Press the <kbd>Ctrl+F12</kbd> key to pause or resume the real-time display.
 
 ## Installation
 
