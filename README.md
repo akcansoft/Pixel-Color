@@ -23,7 +23,7 @@ This is a simple open-source program written in the [AutoHotkey](https://www.aut
 
 ## Installation
 
-Download [Download Pixel Color v1.0](https://github.com/akcansoft/Pixel-Color/blob/main/pixel%20color%20v1.0.exe) to your Windows PC and run.
+Download exe file to your Windows PC and run. No installation required.
 
 ## Source Code
 
