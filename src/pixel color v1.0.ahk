@@ -1,6 +1,8 @@
 /****************************
-Pixel Color v1.0 20/03/2024
+Pixel Color
 Get pixel color at mouse position
+v1.0  20/03/2024
+v1.01 22/03/2024
 
 Mesut Akcan
 makcan@gmail.com
@@ -14,6 +16,7 @@ SetTimer(PixelColor, 200)
 
 form := Gui(,"Pixel color") ; GUI
 form.OnEvent("Close", (*) => ExitApp()) ; if gui close, end
+form.OnEvent("Escape",(*) => ExitApp()) ; if press esc key, end
 
 form.AddText("x10 y10","Mouse pixel color:")
 edColorHex := form.AddEdit("x100 y10 w55")
@@ -47,11 +50,10 @@ form.Show()
 
 upd := true
 
-;Keyboard shortcuts
-Esc::ExitApp()
+; Keyboard shortcut
 F1:: ;update
 {
-	global upd := not(upd)
+	global upd := !upd
 }
 return
 
@@ -91,6 +93,7 @@ PixelColor() {
     }
 }
 
+; Copy buttons click
 Button_Click(Button,*) {
 	if (Button.Name = "Button1"){
 		A_Clipboard := edColorHex.Value
