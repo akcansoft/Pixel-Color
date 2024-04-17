@@ -37,8 +37,8 @@ This program requires the following dependencies:
 
 ## History
 
-v1.0: 20/03/2024
-v1.01: 22/03/2024
+- v1.0: 20/03/2024
+- v1.01: 22/03/2024
 
 ## Author
 
