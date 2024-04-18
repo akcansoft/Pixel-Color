@@ -12,6 +12,7 @@ This is a simple open-source program written in the [AutoHotkey](https://www.aut
 - Shows the red, green, and blue values of the color in both hexadecimal and decimal formats.
 - Displays a square representing the color at the cursor position.
 - Supports pausing and resuming the real-time display with the <kbd>Ctrl+F12</kbd> key.
+- Always on top
 
 ## How to Use
 
@@ -38,8 +39,15 @@ This program requires the following dependencies:
 ## History
 
 - v1.0: 20/03/2024
+First version 
 - v1.01: 22/03/2024
 - V1.02: 17/04/2024
+  - Added program Icon
+  - Added Update checkbox
+  - Change Keyboard shortcut
+- v1.03 18/04/2024
+  - Added "Always on Top" checkbox
+  - Set: No Tray Icon
 
 ## Author
 
