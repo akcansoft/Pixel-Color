@@ -2,7 +2,7 @@
 
 This is a simple open-source program written in the [AutoHotkey](https://www.autohotkey.com) v2 scripting language that displays the color of the pixel at the current mouse cursor position. It shows the color code in both hexadecimal and decimal formats for easy reference
 
-![screen Shot](https://github.com/akcansoft/Pixel-Color/blob/main/screenshot_1.0.png)
+![Screen Shot](https://github.com/akcansoft/Pixel-Color/blob/main/Pixel_Color_Screen_Shot.png))
 
 ## Features
 
