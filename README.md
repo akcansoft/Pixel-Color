@@ -20,7 +20,8 @@ This is a simple open-source program written in the [AutoHotkey](https://www.aut
 2. Move your mouse cursor around the screen.
 3. The color of the pixel at the cursor position will be displayed.
 4. Use the provided buttons to copy the color code in hexadecimal or decimal format to the clipboard.
-5. Press the <kbd>Ctrl+F12</kbd> key to pause or resume the real-time display.
+5. Press the <kbd>F1</kbd> key to pause or resume the real-time display.
+6. Exit the application with the <kbd>Esc</kbd> key
 
 ## Installation
 
