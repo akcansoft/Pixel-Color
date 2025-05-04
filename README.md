@@ -48,7 +48,7 @@ First version
 - v1.3 18/04/2024
   - Added "Always on Top" checkbox
   - Set: No Tray Icon
-- v1.4
+- v1.4 04/05/2025
   - Codes improved and optimised
 
 ## Author
