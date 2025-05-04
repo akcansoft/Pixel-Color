@@ -40,21 +40,23 @@ This program requires the following dependencies:
 
 - v1.0: 20/03/2024
 First version 
-- v1.01: 22/03/2024
-- V1.02: 17/04/2024
+- v1.1: 22/03/2024
+- V1.2: 17/04/2024
   - Added program Icon
   - Added Update checkbox
   - Change Keyboard shortcut
-- v1.03 18/04/2024
+- v1.3 18/04/2024
   - Added "Always on Top" checkbox
   - Set: No Tray Icon
+- v1.4
+  - Codes improved and optimised
 
 ## Author
 
-Mesut Akcan makcan@gmail.com
-
-[akcanSoft Blog](https://akcansoft.blogspot.com) - [Mesut Akcan Blog](https://mesutakcan.blogspot.com)
-
+Mesut Akcan\
+makcan@gmail.com\
+[akcanSoft Blog](https://akcansoft.blogspot.com)\
+[Mesut Akcan Blog](https://mesutakcan.blogspot.com)\
 [Youtube Channel](https://www.youtube.com/mesutakcan)
 
 ## Contributing
