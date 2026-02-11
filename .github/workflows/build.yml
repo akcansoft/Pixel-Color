@@ -13,11 +13,10 @@ jobs:
 
     steps:
       # 1) Repo'yu çek
-      - name: Kodları Çek
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       # 2) AutoHotkey + Ahk2Exe indir
-      - name: Bağımlılıkları İndir
+      - name: AutoHotkey ve Ahk2Exe İndir
         shell: pwsh
         run: |
           Invoke-WebRequest `
@@ -31,56 +30,62 @@ jobs:
           Expand-Archive ahk.zip -DestinationPath ahk
           Expand-Archive compiler.zip -DestinationPath ahk
 
-      # 3) Derleme (src klasöründe çalıştırılır)
+      # 3) Derleme
       - name: Derleme (x64 ve x32)
         shell: pwsh
         run: |
-          $compiler = "..\ahk\Ahk2Exe.exe"
-          $ahk64    = "..\ahk\AutoHotkey64.exe"
-          $ahk32    = "..\ahk\AutoHotkey32.exe"
+          # =============================
+          # SADECE BUNU DEĞİŞTİR
+          # =============================
+          $ahk_file = "src/pixel color.ahk"
+          # =============================
 
-          if (!(Test-Path "ahk\Ahk2Exe.exe")) {
-              Write-Error "Ahk2Exe.exe bulunamadı"
-              exit 1
-          }
+          # Dosya adını al
+          $baseName = [System.IO.Path]::GetFileNameWithoutExtension($ahk_file)
 
-          if (!(Test-Path "ahk\AutoHotkey64.exe") -or !(Test-Path "ahk\AutoHotkey32.exe")) {
-              Write-Error "AutoHotkey exe bulunamadı"
-              exit 1
-          }
+          # Boşlukları "-" yap
+          $exeName = $baseName -replace " ", "-"
+
+          $exeName32 = "$exeName-x32.exe"
+          $exeName64 = "$exeName-x64.exe"
+
+          # dist klasörü oluştur
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          $compiler = "ahk\Ahk2Exe.exe"
+          $ahk64    = "ahk\AutoHotkey64.exe"
+          $ahk32    = "ahk\AutoHotkey32.exe"
+
+          if (!(Test-Path $compiler)) { Write-Error "Ahk2Exe bulunamadı"; exit 1 }
+          if (!(Test-Path $ahk64)) { Write-Error "AutoHotkey64 bulunamadı"; exit 1 }
+          if (!(Test-Path $ahk32)) { Write-Error "AutoHotkey32 bulunamadı"; exit 1 }
 
           Push-Location src
 
           # x64
-          & $compiler `
-            /in "pixel color.ahk" `
-            /base $ahk64 `
-            /out "..\AS-Pixel-Color-x64.exe"
+          & "..\$compiler" `
+            /in "$([System.IO.Path]::GetFileName($ahk_file))" `
+            /base "..\$ahk64" `
+            /icon "app_icon.ico" `
+            /out "..\dist\$exeName64"
 
           # x32
-          & $compiler `
-            /in "pixel color.ahk" `
-            /base $ahk32 `
-            /out "..\AS-Pixel-Color-x32.exe"
+          & "..\$compiler" `
+            /in "$([System.IO.Path]::GetFileName($ahk_file))" `
+            /base "..\$ahk32" `
+            /icon "app_icon.ico" `
+            /out "..\dist\$exeName32"
 
           Pop-Location
 
-      # 4) Exe gerçekten oluştu mu kontrol
-      - name: Çıktı Kontrol
-        shell: pwsh
-        run: |
-          if (!(Test-Path "AS-Pixel-Color-x64.exe") -or !(Test-Path "AS-Pixel-Color-x32.exe")) {
-              Write-Error "Exe dosyaları oluşmadı"
-              exit 1
-          }
+          Write-Host "=== dist klasörü içeriği ==="
+          Get-ChildItem dist
 
-      # 5) Release oluştur
+      # 4) Release oluştur
       - name: Release Oluştur
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            AS-Icon-Viewer-x64.exe
-            AS-Icon-Viewer-x32.exe
+          files: dist/*.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
