@@ -37,7 +37,7 @@ jobs:
           # =============================
           # SADECE BUNU DEĞİŞTİR
           # =============================
-          $ahk_file = "src/pixel color.ahk"
+          $ahk_file = "src/AS Pixel Color.ahk"
           # =============================
 
           # Dosya adını al
