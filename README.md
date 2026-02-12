@@ -1,64 +1,67 @@
-# Pixel Color
+# AS Pixel Color v2.0
 
-This is a simple open-source program written in the [AutoHotkey](https://www.autohotkey.com) v2 scripting language that displays the color of the pixel at the current mouse cursor position. It shows the color code in both hexadecimal and decimal formats for easy reference
+**AS Pixel Color** is a professional, open-source real-time pixel color analysis tool developed with [AutoHotkey](https://www.autohotkey.com) v2. It provides a comprehensive set of color formats and analysis tools for designers, developers, and digital artists.
 
-![Screen Shot](https://github.com/akcansoft/Pixel-Color/blob/main/Pixel_Color_Screen_Shot.png)
+![App Screen Shot](/docs/app_screen_shot_1.png)
 
-## Features
+## 🌟 Key Features
 
-- Displays the color of the pixel at the cursor position.
-- Shows the color code in hexadecimal and decimal formats.
-- Allows copying the color codes to the clipboard.
-- Shows the red, green, and blue values of the color in both hexadecimal and decimal formats.
-- Displays a square representing the color at the cursor position.
-- Supports pausing and resuming the real-time display with the <kbd>Ctrl+F12</kbd> key.
-- Always on top
+- **GDI+ Powered Pixel Zoom:** Examine pixels in detail with a zoom grid ranging from 3x3 to 45x45.
+- **Extensive Color Format Support:**
+  - HEX, DEC, RGB, RGB (Percentage), RGBA, BGR
+  - CMYK (Print-ready format)
+  - HSL and HSV (Digital design formats)
+- **Color Name Recognition:** Instantly identifies the name of the color (e.g., AliceBlue, Crimson) using an extensive color library.
+- **Detailed RGB Analysis:** View Red, Green, and Blue components with both numerical values and visual progress bars.
+- **Advanced Zoom Controls:**
+  - Precision slider for zoom adjustment.
+  - Mouse Wheel support for quick zooming.
+  - One-click 'Reset' to the default 15x15 level.
+- **User-Centric Interface:**
+  - One-click copying for all color formats to the clipboard.
+  - "Always on Top" mode to keep the tool visible.
+  - "Update" toggle to pause/resume real-time tracking.
 
-## How to Use
+## ⌨️ Shortcuts and Usage
 
-1. Run the program.
-2. Move your mouse cursor around the screen.
-3. The color of the pixel at the cursor position will be displayed.
-4. Use the provided buttons to copy the color code in hexadecimal or decimal format to the clipboard.
-5. Press the <kbd>F1</kbd> key to pause or resume the real-time display.
-6. Exit the application with the <kbd>Esc</kbd> key
+1.  **Track Motion:** Move your mouse over any part of the screen to see real-time color data.
+2.  **Toggle Update:** Press <kbd>F1</kbd> to pause or resume the real-time color tracking.
+3.  **Zoom Controls:**
+    *   Rotate the **Mouse Wheel** up/down to change the zoom level.
+    *   Use the **Slider** for manual adjustment.
+    *   Click **Reset** to return to 15x15 zoom.
+4.  **Copy to Clipboard:** Click the `Copy` button next to any format to copy its value instantly.
+5.  **Exit:** Click the `Close` button or close the window to exit.
 
-## Installation
+## 🛠️ Technical Setup
 
-Download exe file to your Windows PC and run. No installation required.
+### Standalone Version (.exe)
+Download and run the `.exe` file appropriate for your system from the [releases](https://github.com/akcansoft/Pixel-Color/releases/) page.
 
-## Source Code
+### Running from Source
+To use the source code:
+1.  Ensure [AutoHotkey v2](https://www.autohotkey.com) is installed on your system.
+2. Download `AS Pixel Color.ahk` and `app_icon.ico` from the [src/](/src) folder and place them in the same directory.
+3.  Run the script by double-clicking the `.ahk` file.
 
-The source code for this program is available in the [src folder](https://github.com/akcansoft/Pixel-Color/tree/main/src). To use the program source code, you'll need to have [AutoHotkey](https://www.autohotkey.com) v2 installed on your system. You can run the script directly using the [AutoHotkey](https://www.autohotkey.com) interpreter. Alternatively, you can compile the script into an executable file for easier distribution.
+## 📝 Version History
 
-## Dependencies
+- **v2.0 (2026-02-12):** 
+  - Implementation of GDI+ advanced zoom grid.
+  - Added HSL, HSV, and CMYK color formats.
+  - Added Color Name identification feature.
+  - Completely redesigned and modernized UI.
+  - Added Mouse Wheel support for zoom control.
+- **v1.4 (2025-05-04):** Code optimization and performance improvements.
+- **v1.3 (2024-04-18):** Added "Always on Top" checkbox and tray icon adjustments.
+- **v1.0 (2024-03-20):** Initial release.
 
-This program requires the following dependencies:
+## 👤 Author
 
-- Windows x64
+**Mesut Akcan**  
+📧 [makcan@gmail.com](mailto:makcan@gmail.com)  
+🌐 [akcanSoft Blog](https://akcansoft.blogspot.com)  
+🎥 [YouTube Channel](https://www.youtube.com/mesutakcan)  
 
-## History
-
-- v1.0: 20/03/2024
-First version 
-- v1.1: 22/03/2024
-- V1.2: 17/04/2024
-  - Added program Icon
-  - Added Update checkbox
-  - Change Keyboard shortcut
-- v1.3 18/04/2024
-  - Added "Always on Top" checkbox
-  - Set: No Tray Icon
-- v1.4 04/05/2025
-  - Codes improved and optimised
-
-## Author
-
-Mesut Akcan\
-makcan@gmail.com\
-[akcanSoft Blog](https://akcansoft.blogspot.com)\
-[Mesut Akcan Blog](https://mesutakcan.blogspot.com)\
-[Youtube Channel](https://www.youtube.com/mesutakcan)
-
-## Contributing
-Contributions are welcome! If you'd like to add features, fix bugs, or improve the code, feel free to open a pull request.
+## 🤝 Contributing
+Contributions are welcome! Feel free to open a pull request or submit an issue on GitHub to suggest features or report bugs.
