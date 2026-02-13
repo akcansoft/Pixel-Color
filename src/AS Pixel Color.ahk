@@ -1,12 +1,12 @@
 ;@Ahk2Exe-SetName AS Pixel Color
 ;@Ahk2Exe-SetDescription AS Pixel Color
-;@Ahk2Exe-SetFileVersion 2.0
+;@Ahk2Exe-SetFileVersion 2.1
 ;@Ahk2Exe-SetCompanyName AkcanSoft
 ;@Ahk2Exe-SetCopyright ©2026 Mesut Akcan
 ;@Ahk2Exe-SetMainIcon app_icon.ico
 
 ; AS Pixel Color
-; 12/02/2026
+; 13/02/2026
 
 ; Mesut Akcan
 ; -----------
@@ -42,7 +42,7 @@ zoomLevel := defaultZoom ; Current zoom level
 maxZoom := 45 ; Maximum zoom level
 minZoom := 3  ; Minimum zoom level
 gridColor := 0xFFBCBCBC ; Grid Color
-edtBgColor := "BackgroundffffF0" ; EditBox Background Color
+edtBgColor := "BackgroundFFFFF0" ; EditBox Background Color
 
 ; ========================================
 ; CREATE GUI
@@ -72,9 +72,9 @@ pb_GridBorder := mGui.AddProgress("x" startX - 1 " y" startY - 1 " w" totalGridS
 gridDisplay := GDIPlusGrid(mGui, startX, startY, totalGridSize, gridColor)
 
 ; 3. Zoom controls
-; Slider (width matches grid width: 216)
-sld_Zoom := mGui.AddSlider("x10 y400 w216 Range" minZoom "-" maxZoom " ToolTip", zoomLevel)
-sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom((ctrl.Value // 2) * 2 + 1, true))
+; Slider (Range 0-21 maps to zoom 3-45: zoom = val * 2 + 3)
+sld_Zoom := mGui.AddSlider("x10 y400 w216 Range0-" (maxZoom - minZoom) // 2 " ToolTip", (zoomLevel - minZoom) // 2)
+sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom(ctrl.Value * 2 + minZoom, true))
 
 chk_Zoom := mGui.AddCheckBox("x10 y440 Checked", "Zoom")
 chk_Zoom.OnEvent("Click", ToggleZoom)
@@ -113,6 +113,7 @@ rgbLabels := ["Red:", "Green:", "Blue:"]
 rgbColors := ["cRed", "cLime", "cBlue"]
 rgbControls := Map()
 
+; RGB Component Controls
 loop 3 {
 	i := A_Index
 	yPos := rgbY + (i - 1) * 27
@@ -158,6 +159,21 @@ mGui.OnEvent("Close", (*) => ExitApp())
 ; ========================================
 F1:: chk_Upd.Value := !chk_Upd.Value
 
+; --- Mouse Movement Hotkeys ---
+; Ctrl + Arrow Keys: Move mouse 1 pixel
+; Ctrl + Shift + Arrow Keys: Move mouse 10 pixels
+#HotIf !WinActive("ahk_class #32770") ; Do not run when dialogs are open
+^Up:: MoveMouse(0, -1) ; Ctrl+Up
+^Down:: MoveMouse(0, 1) ; Ctrl+Down
+^Left:: MoveMouse(-1, 0) ; Ctrl+Left
+^Right:: MoveMouse(1, 0) ; Ctrl+Right
+
+^+Up:: MoveMouse(0, -10) ; Ctrl+Shift+Up
+^+Down:: MoveMouse(0, 10) ; Ctrl+Shift+Down
+^+Left:: MoveMouse(-10, 0) ; Ctrl+Shift+Left
+^+Right:: MoveMouse(10, 0) ; Ctrl+Shift+Right
+#HotIf
+
 ; ========================================
 ; START APPLICATION
 ; ========================================
@@ -180,8 +196,12 @@ ChangeZoom(value, isAbsolute := false, *) {
 	if (newZoom >= minZoom && newZoom <= maxZoom) {
 		zoomLevel := newZoom
 		txt_ZoomLevel.Value := Format("{}x{}", zoomLevel, zoomLevel)
-		if (IsSet(sld_Zoom) && sld_Zoom.Value != zoomLevel)
-			sld_Zoom.Value := zoomLevel
+		if (IsSet(sld_Zoom)) {
+			sldVal := (zoomLevel - minZoom) // 2
+			if (sld_Zoom.Value != sldVal)
+				sld_Zoom.Value := sldVal
+		}
+		RefreshGrid()
 	}
 }
 
@@ -284,22 +304,23 @@ GetColorName(hexColor) {
 		"00BFFF", "DeepSkyBlue", "696969", "DimGray", "1E90FF", "DodgerBlue", "B22222", "FireBrick",
 		"FFFAF0", "FloralWhite", "228B22", "ForestGreen", "FF00FF", "Fuchsia", "DCDCDC", "Gainsboro",
 		"F8F8FF", "GhostWhite", "FFD700", "Gold", "DAA520", "GoldenRod", "808080", "Gray", "008000", "Green",
-		"ADFF2F", "GreenYellow", "F0FFF0", "HoneyDew", "FF69B4", "HotPink",
-		"CD5C5C", "IndianRed", "4B0082", "Indigo", "FFFFF0", "Ivory", "F0E68C", "Khaki", "E6E6FA", "Lavender",
-		"FFF0F5", "LavenderBlush", "7CFC00", "LawnGreen", "FFFACD", "LemonChiffon", "ADD8E6", "LightBlue",
-		"F08080", "LightCoral", "E0FFFF", "LightCyan", "FAFAD2", "LightGoldenRodYellow", "D3D3D3", "LightGray",
-		"90EE90", "LightGreen", "FFB6C1", "LightPink", "FFA07A", "LightSalmon", "20B2AA", "LightSeaGreen",
-		"87CEFA", "LightSkyBlue", "778899", "LightSlateGray", "B0C4DE", "LightSteelBlue", "FFFFE0", "LightYellow",
-		"00FF00", "Lime", "32CD32", "LimeGreen", "FAF0E6", "Linen", "FF00FF", "Magenta", "800000", "Maroon",
+		"ADFF2F", "GreenYellow", "F0FFF0", "HoneyDew", "FF69B4", "HotPink", "CD5C5C", "IndianRed",
+		"4B0082", "Indigo", "FFFFF0", "Ivory", "F0E68C", "Khaki", "E6E6FA", "Lavender", "FFF0F5", "LavenderBlush",
+		"7CFC00", "LawnGreen", "FFFACD", "LemonChiffon", "ADD8E6", "LightBlue", "F08080", "LightCoral",
+		"E0FFFF", "LightCyan", "FAFAD2", "LightGoldenRodYellow", "D3D3D3", "LightGray", "90EE90", "LightGreen",
+		"FFB6C1", "LightPink", "FFA07A", "LightSalmon", "20B2AA", "LightSeaGreen", "87CEFA", "LightSkyBlue",
+		"778899", "LightSlateGray", "B0C4DE", "LightSteelBlue", "FFFFE0", "LightYellow", "00FF00", "Lime",
+		"32CD32", "LimeGreen", "FAF0E6", "Linen", "FF00FF", "Magenta", "800000", "Maroon",
 		"66CDAA", "MediumAquaMarine", "0000CD", "MediumBlue", "BA55D3", "MediumOrchid", "9370DB", "MediumPurple",
-		"3CB371", "MediumSeaGreen", "7B68EE", "MediumSlateBlue", "00FA9A", "MediumSpringGreen", "48D1CC", "MediumTurquoise",
-		"C71585", "MediumVioletRed", "191970", "MidnightBlue", "F5FFFA", "MintCream", "FFE4E1", "MistyRose",
-		"FFE4B5", "Moccasin", "FFDEAD", "NavajoWhite", "000080", "Navy", "FDF5E6", "OldLace", "808000", "Olive",
-		"6B8E23", "OliveDrab", "FFA500", "Orange", "FF4500", "OrangeRed", "DA70D6", "Orchid", "EEE8AA", "PaleGoldenRod",
-		"98FB98", "PaleGreen", "AFEEEE", "PaleTurquoise", "DB7093", "PaleVioletRed", "FFEFD5", "PapayaWhip",
-		"FFDAB9", "PeachPuff", "CD853F", "Peru", "FFC0CB", "Pink", "DDA0DD", "Plum", "B0E0E6", "PowderBlue",
-		"800080", "Purple", "663399", "RebeccaPurple", "FF0000", "Red", "BC8F8F", "RosyBrown", "4169E1", "RoyalBlue",
-		"8B4513", "SaddleBrown", "FA8072", "Salmon", "F4A460", "SandyBrown", "2E8B57", "SeaGreen", "FFF5EE", "SeaShell",
+		"3CB371", "MediumSeaGreen", "7B68EE", "MediumSlateBlue", "00FA9A", "MediumSpringGreen", "48D1CC",
+		"MediumTurquoise", "C71585", "MediumVioletRed", "191970", "MidnightBlue", "F5FFFA", "MintCream",
+		"FFE4E1", "MistyRose", "FFE4B5", "Moccasin", "FFDEAD", "NavajoWhite", "000080", "Navy",
+		"FDF5E6", "OldLace", "808000", "Olive", "6B8E23", "OliveDrab", "FFA500", "Orange", "FF4500", "OrangeRed",
+		"DA70D6", "Orchid", "EEE8AA", "PaleGoldenRod", "98FB98", "PaleGreen", "AFEEEE", "PaleTurquoise",
+		"DB7093", "PaleVioletRed", "FFEFD5", "PapayaWhip", "FFDAB9", "PeachPuff", "CD853F", "Peru",
+		"FFC0CB", "Pink", "DDA0DD", "Plum", "B0E0E6", "PowderBlue", "800080", "Purple", "663399", "RebeccaPurple",
+		"FF0000", "Red", "BC8F8F", "RosyBrown", "4169E1", "RoyalBlue", "8B4513", "SaddleBrown",
+		"FA8072", "Salmon", "F4A460", "SandyBrown", "2E8B57", "SeaGreen", "FFF5EE", "SeaShell",
 		"A0522D", "Sienna", "C0C0C0", "Silver", "87CEEB", "SkyBlue", "6A5ACD", "SlateBlue", "708090", "SlateGray",
 		"FFFAFA", "Snow", "00FF7F", "SpringGreen", "4682B4", "SteelBlue", "D2B48C", "Tan", "008080", "Teal",
 		"D8BFD8", "Thistle", "FF6347", "Tomato", "40E0D0", "Turquoise", "EE82EE", "Violet", "F5DEB3", "Wheat",
@@ -311,52 +332,73 @@ GetColorName(hexColor) {
 
 ; Update Pixel Color
 UpdatePixelColor() {
-	static lastX := -1, lastY := -1, lastZoom := -1, lastRGB := -1, idleCount := 0
+	static lastX := -1, lastY := -1, lastZoom := -1, lastRGB := -1
 
 	if (!chk_Upd.Value)
 		return
 
-	; Snap current values to local variables to prevent race conditions
-	currZoom := zoomLevel
-	MouseGetPos(&MouseX, &MouseY)
+	MouseGetPos(&mX, &mY)
+	currZ := zoomLevel
+	try currC := Integer(PixelGetColor(mX, mY))
+	catch
+		currC := lastRGB
 
-	; Get current color at mouse position first
-	colorRGB := Integer(PixelGetColor(MouseX, MouseY))
+	; Detect changes
+	posChanged := (mX != lastX || mY != lastY)
+	zoomChanged := (currZ != lastZoom)
+	colorChanged := (currC != lastRGB)
 
-	; HYBRID UPDATE LOGIC:
-	; 1. If active (mouse moved, zoom changed, or color changed), update immediately.
-	; 2. If idle, update only every 10th cycle (approx. 1 second) to refresh the grid area.
-	if (MouseX == lastX && MouseY == lastY && currZoom == lastZoom && colorRGB == lastRGB) {
-		idleCount++
-		if (idleCount < 10)
-			return
+	if (posChanged || colorChanged) {
+		RefreshColorInfo(mX, mY, currC)
+		RefreshGrid(mX, mY, currZ)
+	} else if (zoomChanged) {
+		RefreshGrid(mX, mY, currZ)
 	}
 
-	idleCount := 0
-	lastX := MouseX
-	lastY := MouseY
-	lastZoom := currZoom
-	lastRGB := colorRGB
+	lastX := mX, lastY := mY, lastZoom := currZ, lastRGB := currC
+}
 
-	txt_Position.Value := Format("Position: {:4}, {:4}", MouseX, MouseY)
+; Move mouse and update UI immediately
+MoveMouse(x, y) {
+	MouseMove(x, y, 0, "R")
+	RefreshColorInfo()
+	RefreshGrid()
+}
 
-	colorHex := Format("{:06X}", colorRGB)
+; Refresh Grid and Zoom labels only
+RefreshGrid(x?, y?, z?) {
+	global startX, startY, totalGridSize
+	if (!IsSet(x)) MouseGetPos(&x, &y)
+		if (!IsSet(z)) z := zoomLevel
+			txt_ZoomLevel.Value := Format("{}x{}", z, z)
+	if (zoomEnabled) {
+		gridColors := GetScreenColors(x, y, z)
+		gridDisplay.Draw(gridColors, z, pb_GridBorder, startX, startY, totalGridSize)
+	}
+}
+
+; Refresh Position and Color Codes only
+RefreshColorInfo(x?, y?, c?) {
+	if (!IsSet(x)) MouseGetPos(&x, &y)
+		if (!IsSet(c)) {
+			try c := Integer(PixelGetColor(x, y))
+			catch
+				return
+		}
+
+	txt_Position.Value := Format("Position: {:4}, {:4}", x, y)
+
+	colorHex := Format("{:06X}", c)
 	txtControls["Hex"].Value := "#" colorHex
-	txtControls["Dec"].Value := colorRGB
+	txtControls["Dec"].Value := String(c)
 	pb_Color.Opt("Background" colorHex)
 
-	; AHK v2 PixelGetColor returns 0xRRGGBB by default
-	r := (colorRGB >> 16) & 0xFF ; Red
-	g := (colorRGB >> 8) & 0xFF ; Green
-	b := colorRGB & 0xFF ; Blue
-
+	r := (c >> 16) & 0xFF, g := (c >> 8) & 0xFF, b := c & 0xFF
 	UpdateColorComponent(r, "Red", rgbControls)
 	UpdateColorComponent(g, "Grn", rgbControls)
 	UpdateColorComponent(b, "Blu", rgbControls)
 
-	rP := Round(r / 2.55, 1)
-	gP := Round(g / 2.55, 1)
-	bP := Round(b / 2.55, 1)
+	rP := Round(r / 2.55, 1), gP := Round(g / 2.55, 1), bP := Round(b / 2.55, 1)
 	txtControls["RgbPercent"].Value := Format("rgb({:.1f}%, {:.1f}%, {:.1f}%)", rP, gP, bP)
 	txtControls["Rgb"].Value := Format("rgb({}, {}, {})", r, g, b)
 	txtControls["Rgba"].Value := Format("rgba({}, {}, {}, 1.0)", r, g, b)
@@ -364,20 +406,11 @@ UpdatePixelColor() {
 
 	cmyk := RGBtoCMYK(r, g, b)
 	txtControls["Cmyk"].Value := Format("cmyk({}%, {}%, {}%, {}%)", cmyk.c, cmyk.m, cmyk.y, cmyk.k)
-
 	hsl := RGBtoHSL(r, g, b)
 	txtControls["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l)
-
 	hsv := RGBtoHSV(r, g, b)
 	txtControls["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v)
-
 	txt_Cn.Value := GetColorName(colorHex)
-
-	if (zoomEnabled) {
-		gridColors := GetScreenColors(MouseX, MouseY, currZoom)
-		global pb_GridBorder, startX, startY, totalGridSize
-		gridDisplay.Draw(gridColors, currZoom, pb_GridBorder, startX, startY, totalGridSize)
-	}
 }
 
 ; Update Color Component
@@ -456,7 +489,7 @@ GetScreenColors(centerX, centerY, count) {
 
 ; About Dialog
 About(*) {
-	msg := A_ScriptName " v2.0`n`n"
+	msg := A_ScriptName " v2.1`n`n"
 	msg .= ("
 (
 Mesut Akcan
@@ -597,6 +630,24 @@ class GDIPlusGrid {
 
 		; Clean up cell brush
 		DllCall("gdiplus\GdipDeleteBrush", "Ptr", pCellBrush)
+
+		; Highlight active pixel (center)
+		mid := (zoomLvl // 2) + 1
+		hx := (mid - 1) * cellSize
+		hy := (mid - 1) * cellSize
+		hw := cellSize - 1
+		hh := cellSize - 1
+
+		; Double-border for visibility (Black outer, White inner)
+		DllCall("gdiplus\GdipCreatePen1", "UInt", 0xFF000000, "Float", 1, "Int", 2, "Ptr*", &pPenB := 0)
+		DllCall("gdiplus\GdipDrawRectangle", "Ptr", this.pGraphics, "Ptr", pPenB, "Float", hx - 1, "Float", hy - 1,
+			"Float", hw + 2, "Float", hh + 2)
+		DllCall("gdiplus\GdipDeletePen", "Ptr", pPenB)
+
+		DllCall("gdiplus\GdipCreatePen1", "UInt", 0xFFFFFFFF, "Float", 1, "Int", 2, "Ptr*", &pPenW := 0)
+		DllCall("gdiplus\GdipDrawRectangle", "Ptr", this.pGraphics, "Ptr", pPenW, "Float", hx, "Float", hy, "Float", hw,
+			"Float", hh)
+		DllCall("gdiplus\GdipDeletePen", "Ptr", pPenW)
 
 		; Get HBITMAP from GDI+ Bitmap to display in Picture control
 		DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "Ptr", this.pBitmap, "Ptr*", &hBitmap := 0, "UInt", 0)
