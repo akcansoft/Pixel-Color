@@ -3,8 +3,8 @@
 
 ; Mesut Akcan
 ; -----------
-; mesutakcan.blogspot.com
 ; github.com/akcansoft
+; mesutakcan.blogspot.com
 ; youtube.com/mesutakcan
 
 ; TODO:
@@ -32,20 +32,22 @@ try TraySetIcon(A_ScriptDir "\app_icon.ico")
 global APP := {
 	Name: "AS Pixel Color",
 	Ver: "2.2",
-	Int: 100,               ; Update interval (ms)
+	Interval: 100,          ; Update interval (ms)
 	Size: 216,              ; Grid display size (px)
 	MinCells: 3,            ; Keep at least 3x3 cells visible
-	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 15, 20, 25, 30, 37, 45, 55, 65, 70],
 	DefIdx: 6,              ; Default zoom index -> 15x
 	GridCol: 0xFFBCBCBC,    ; Grid and border color
-	EditBg: "BackgroundFFFFF0"
+	EditBg: "BackgroundFFFFF0", ; Edit controls background color
+	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 15, 20, 25, 30, 37, 45, 55, 65, 70] ; Zoom levels (x) corresponding to slider positions
 }
 
 global State := {
-	ZoomIdx: APP.DefIdx,
-	ZoomLvl: APP.ZoomSteps[APP.DefIdx],
-	ZoomEnabled: true,
-	GridEnabled: true,
+	ZoomIdx: APP.DefIdx,                ; Current zoom index in the ZoomSteps array
+	ZoomLvl: APP.ZoomSteps[APP.DefIdx], ; Current zoom level (e.g., 15x)
+	ZoomEnabled: true,                  ; Whether zoom preview is enabled
+	GridEnabled: true,                  ; Whether grid lines are enabled
+	IsRendering: false,                 ; Flag to prevent updates while rendering is in progress
+	; Mouse position, color, and zoom level from the last update cycle
 	LastX: -1, LastY: -1, LastC: -1, LastZ: -1
 }
 
@@ -97,29 +99,28 @@ txt_Position := mGui.AddText("x" rX + 10 " y55 w150", "Position: 0, 0")
 
 ; RGB color codes
 rgbTags := ["Red", "Grn", "Blu"], rgbLabels := ["Red:", "Green:", "Blue:"], rgbColors := ["cRed", "cLime", "cBlue"]
-rgbCtrls := Map()
+rgbCtl := Map() ; Store RGB control references for easy updates
 
 ; RGB color code boxes
 loop 3 {
 	yPos := 75 + (A_Index - 1) * 27
 	mGui.AddText("x" rX + 10 " y" yPos, rgbLabels[A_Index])
-	rgbCtrls[rgbTags[A_Index] "Hex"] := mGui.AddEdit("x" rX + 50 " y" yPos - 3 " w35 " APP.EditBg)
-	rgbCtrls[rgbTags[A_Index] "Dec"] := mGui.AddEdit("x+5 yp w35 " APP.EditBg)
-	rgbCtrls[rgbTags[A_Index] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[
-		A_Index])
+	rgbCtl[rgbTags[A_Index] "Hex"] := mGui.AddEdit("x" rX + 50 " y" yPos - 3 " w35 " APP.EditBg)
+	rgbCtl[rgbTags[A_Index] "Dec"] := mGui.AddEdit("x+5 yp w35 " APP.EditBg)
+	rgbCtl[rgbTags[A_Index] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[A_Index])
 }
 
 ; Color codes group box
 mGui.AddGroupBox("x" rX " y170 w" gbW " h280", "Color Codes")
 fields := ["Hex", "Dec", "Rgb", "RgbPercent", "Rgba", "Bgr", "Cmyk", "Hsl", "Hsv"]
 labels := ["HEX:", "DEC:", "RGB:", "RGB%:", "RGBA:", "BGR:", "CMYK:", "HSL:", "HSV:"]
-txtCtrls := Map()
+txtCtl := Map() ; Store color code control references for easy updates
 
 ; Color code boxes
 loop fields.Length {
 	yPos := 190 + (A_Index - 1) * 25
 	mGui.AddText("x" rX + 10 " y" yPos, labels[A_Index])
-	txtCtrls[fields[A_Index]] := mGui.AddEdit("x" rX + 50 " w160 y" yPos - 3 " " APP.EditBg)
+	txtCtl[fields[A_Index]] := mGui.AddEdit("x" rX + 50 " w160 y" yPos - 3 " " APP.EditBg)
 	mGui.AddButton("x+5 yp-1 w50 V" fields[A_Index], "Copy").OnEvent("Click", CopyToClipboard)
 }
 
@@ -135,14 +136,16 @@ mGui.OnEvent("Close", (*) => ExitApp())
 OnMessage(0x020A, WM_MOUSEWHEEL) ; Mouse wheel zoom
 mGui.Show("w530 h500")
 
-SetTimer(UpdateLoop, APP.Int) ; Update loop
+SetTimer(UpdateLoop, APP.Interval) ; Update loop
 
-; ========================================
-; UPDATE LOGIC
 ; ========================================
 ; Main loop that checks for mouse movement or color changes and updates the UI accordingly.
 UpdateLoop() {
 	if (!chk_Upd.Value)
+		return
+
+	; Don't update while rendering is in progress
+	if (State.IsRendering)
 		return
 
 	MouseGetPos(&mX, &mY)
@@ -155,6 +158,7 @@ UpdateLoop() {
 		currC := State.LastC
 	}
 
+	; Check what changed
 	posChanged := (mX != State.LastX || mY != State.LastY)
 	colorChanged := (currC != State.LastC)
 	zoomChanged := (currZ != State.LastZ)
@@ -181,8 +185,17 @@ RefreshGrid(x?, y?, z?) {
 	z := IsSet(z) ? z : State.ZoomLvl
 	txt_ZoomLevel.Value := "Zoom: " z "x"
 
-	colors := GetScreenColors(x, y, z, APP.Size)
-	gridDisplay.Draw(colors, z, State.GridEnabled)
+	try colors := GetScreenColors(x, y, z, APP.Size)
+	catch
+		return
+
+	; Always release render lock, even if draw fails
+	State.IsRendering := true
+	try {
+		gridDisplay.Draw(colors, z, State.GridEnabled)
+	} finally {
+		State.IsRendering := false
+	}
 }
 
 ; Updates the color information display (Hex, RGB, CMYK, etc.) for the current pixel.
@@ -190,31 +203,33 @@ RefreshColorInfo(x, y, c) {
 	txt_Position.Value := Format("Position: {:4}, {:4}", x, y) ; Position
 
 	colorHex := Format("{:06X}", c) ; Color hex
-	txtCtrls["Hex"].Value := "#" colorHex ; Hex
-	txtCtrls["Dec"].Value := String(c) ; Dec
+	txtCtl["Hex"].Value := "#" colorHex ; Hex
+	txtCtl["Dec"].Value := String(c) ; Dec
 	pb_Color.Opt("Background" colorHex) ; Color
 
 	r := (c >> 16) & 0xFF ; Red
 	g := (c >> 8) & 0xFF ; Green
 	b := c & 0xFF ; Blue
 
-	UpdateColorComponent(r, "Red", rgbCtrls) ; Red
-	UpdateColorComponent(g, "Grn", rgbCtrls) ; Green
-	UpdateColorComponent(b, "Blu", rgbCtrls) ; Blue
+	UpdateColorComponent(r, "Red", rgbCtl) ; Red
+	UpdateColorComponent(g, "Grn", rgbCtl) ; Green
+	UpdateColorComponent(b, "Blu", rgbCtl) ; Blue
 
-	txtCtrls["Rgb"].Value := Format("rgb({}, {}, {})", r, g, b) ; RGB
-	txtCtrls["RgbPercent"].Value := Format("rgb({:.1f}%, {:.1f}%, {:.1f}%)", r / 2.55, g / 2.55, b / 2.55) ; RGB%
-	txtCtrls["Rgba"].Value := Format("rgba({}, {}, {}, 1.0)", r, g, b) ; RGBA
-	txtCtrls["Bgr"].Value := Format("${:02X}{:02X}{:02X}", b, g, r) ; BGR
+	txtCtl["Rgb"].Value := Format("rgb({}, {}, {})", r, g, b) ; RGB
+	txtCtl["RgbPercent"].Value := Format("rgb({:.1f}%, {:.1f}%, {:.1f}%)", r / 2.55, g / 2.55, b / 2.55) ; RGB%
+	txtCtl["Rgba"].Value := Format("rgba({}, {}, {}, 1.0)", r, g, b) ; RGBA
+	txtCtl["Bgr"].Value := Format("${:02X}{:02X}{:02X}", b, g, r) ; BGR
 
 	cmyk := RGBtoCMYK(r, g, b) ; CMYK
-	txtCtrls["Cmyk"].Value := Format("cmyk({}%, {}%, {}%, {}%)", cmyk.c, cmyk.m, cmyk.y, cmyk.k)
+	txtCtl["Cmyk"].Value := Format("cmyk({}%, {}%, {}%, {}%)", cmyk.c, cmyk.m, cmyk.y, cmyk.k)
 
-	hsl := RGBtoHSL(r, g, b) ; HSL
-	txtCtrls["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l)
+	hsxRes := RGBtoHSX(r, g, b)
 
-	hsv := RGBtoHSV(r, g, b) ; HSV
-	txtCtrls["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v)
+	hsl := RGBtoHSLFromHSX(hsxRes)
+	txtCtl["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l)
+
+	hsv := RGBtoHSVFromHSX(hsxRes)
+	txtCtl["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v)
 
 	txt_Cn.Value := GetColorName(colorHex)
 }
@@ -261,7 +276,7 @@ WM_MOUSEWHEEL(wParam, lParam, msg, hwnd) {
 
 ; Copies the text content of the clicked control to the clipboard.
 CopyToClipboard(ctrl, *) {
-	val := (ctrl.Name = "Cn") ? txt_Cn.Value : txtCtrls[ctrl.Name].Value
+	val := (ctrl.Name = "Cn") ? txt_Cn.Value : txtCtl[ctrl.Name].Value
 	if (val != "") {
 		A_Clipboard := val
 		ToolTip("Copied: " val)
@@ -304,13 +319,51 @@ GetScreenColors(cX, cY, zoom, frameSize) {
 	count := GetVisibleCellCount(frameSize, zoom) ; Calculate the number of visible cells in the grid
 	half := count // 2 ; Calculate the half of the visible cells
 
+	; Virtual screen bounds (all monitors)
+	vLeft := DllCall("GetSystemMetrics", "Int", 76, "Int")
+	vTop := DllCall("GetSystemMetrics", "Int", 77, "Int")
+	vW := DllCall("GetSystemMetrics", "Int", 78, "Int")
+	vH := DllCall("GetSystemMetrics", "Int", 79, "Int")
+	vRight := vLeft + vW - 1
+	vBottom := vTop + vH - 1
+
+	srcX := cX - half
+	srcY := cY - half
+
+	; Intersect requested capture region with virtual screen
+	validX1 := Max(srcX, vLeft)
+	validY1 := Max(srcY, vTop)
+	validX2 := Min(srcX + count - 1, vRight)
+	validY2 := Min(srcY + count - 1, vBottom)
+
+	; If completely outside, return an empty grid (all cells invalid)
+	if (validX1 > validX2 || validY1 > validY2) {
+		res := []
+		loop count {
+			row := []
+			loop count
+				row.Push(-1)
+			res.Push(row)
+		}
+		return res
+	}
+
+	bltW := validX2 - validX1 + 1
+	bltH := validY2 - validY1 + 1
+	dstX := validX1 - srcX
+	dstY := validY1 - srcY
+	validColStart := dstX + 1
+	validColEnd := validColStart + bltW - 1
+	validRowStart := dstY + 1
+	validRowEnd := validRowStart + bltH - 1
+
 	hDC := DllCall("GetDC", "Ptr", 0, "Ptr") ; Get desktop window handle
 	mDC := DllCall("CreateCompatibleDC", "Ptr", hDC, "Ptr") ; Create a compatible DC
 	hBM := DllCall("CreateCompatibleBitmap", "Ptr", hDC, "Int", count, "Int", count, "Ptr") ; Create a compatible bitmap
 	oBM := DllCall("SelectObject", "Ptr", mDC, "Ptr", hBM, "Ptr") ; Select the bitmap into the DC
 
-	DllCall("BitBlt", "Ptr", mDC, "Int", 0, "Int", 0, "Int", count, "Int", count, "Ptr", hDC, "Int", cX - half, "Int",
-		cY - half, "UInt", 0x00CC0020) ; Copy the screen pixels to the bitmap
+	DllCall("BitBlt", "Ptr", mDC, "Int", dstX, "Int", dstY, "Int", bltW, "Int", bltH, "Ptr", hDC, "Int", validX1, "Int",
+		validY1, "UInt", 0x00CC0020) ; Copy only the valid source pixels
 
 	bi := Buffer(40, 0) ; Create a buffer to store the bitmap information
 	NumPut("UInt", 40, "Int", count, "Int", -count, "UShort", 1, "UShort", 32, bi) ; Set the bitmap information
@@ -323,13 +376,22 @@ GetScreenColors(cX, cY, zoom, frameSize) {
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC) ; Release the DC
 
 	res := [] ; Create an array to store the pixel data
+	stride := count * 4
+
 	loop count {
 		rIdx := A_Index ; Get the current row index
 		row := [] ; Create an array to store the pixel data for the current row
+		baseOffset := (rIdx - 1) * stride
+
 		loop count {
-			off := ((rIdx - 1) * count + (A_Index - 1)) * 4 ; Calculate the offset to the current pixel data
-			bgrx := NumGet(pixelBuf, off, "UInt") ; Get the pixel data from the buffer
-			row.Push(((bgrx >> 16) & 0xFF) << 16 | ((bgrx >> 8) & 0xFF) << 8 | (bgrx & 0xFF)) ; Convert the pixel data to the correct format
+			cIdx := A_Index
+			if (rIdx >= validRowStart && rIdx <= validRowEnd && cIdx >= validColStart && cIdx <= validColEnd) {
+				off := baseOffset + (cIdx - 1) * 4
+				bgrx := NumGet(pixelBuf, off, "UInt") ; Get the pixel data from the buffer
+				row.Push(((bgrx >> 16) & 0xFF) << 16 | ((bgrx >> 8) & 0xFF) << 8 | (bgrx & 0xFF))
+			} else {
+				row.Push(-1)
+			}
 		}
 		res.Push(row) ; Add the row to the result array
 	}
@@ -373,22 +435,20 @@ RGBtoHSX(r, g, b) {
 	return { h: Round(h * 360), mx: mx, mn: mn, d: d }
 }
 
-; Converts RGB color values to HSL (Hue, Saturation, Lightness).
-RGBtoHSL(r, g, b) {
-	res := RGBtoHSX(r, g, b)
+; Convert from cached HSX result to HSL
+RGBtoHSLFromHSX(res) {
 	l := (res.mx + res.mn) / 2
 	s := (res.d = 0) ? 0 : (l > 0.5 ? res.d / (2 - res.mx - res.mn) : res.d / (res.mx + res.mn))
 	return { h: res.h, s: Round(s * 100), l: Round(l * 100) }
 }
 
-; Converts RGB color values to HSV (Hue, Saturation, Value).
-RGBtoHSV(r, g, b) {
-	res := RGBtoHSX(r, g, b)
+; Convert from cached HSX result to HSV
+RGBtoHSVFromHSX(res) {
 	s := (res.mx = 0) ? 0 : res.d / res.mx
 	return { h: res.h, s: Round(s * 100), v: Round(res.mx * 100) }
 }
 
-; Retrieves the standard color name (e.g., 'Red', 'Azure') for a given hex color code.
+; Retrieves the standard color name
 GetColorName(hexColor) {
 	static colorNames := Map(
 		"F0F8FF", "AliceBlue", "FAEBD7", "AntiqueWhite", "00FFFF", "Aqua", "7FFFD4", "Aquamarine",
@@ -490,8 +550,10 @@ class GDIPlusGrid {
 			y := (r - 1) * cellSize + off
 			h := Max(1, cellSize - gap)
 			loop count {
-				DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFF000000 | colors[r][A_Index]
-				)
+				cellColor := colors[r][A_Index]
+				if (cellColor < 0)
+					continue
+				DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFF000000 | cellColor)
 				DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", (A_Index - 1) *
 					cellSize + off, "Float", y, "Float", Max(1, cellSize - gap), "Float", h)
 			}
