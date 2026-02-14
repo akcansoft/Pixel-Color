@@ -1,12 +1,5 @@
-;@Ahk2Exe-SetName AS Pixel Color
-;@Ahk2Exe-SetDescription AS Pixel Color
-;@Ahk2Exe-SetFileVersion 2.1
-;@Ahk2Exe-SetCompanyName AkcanSoft
-;@Ahk2Exe-SetCopyright ©2026 Mesut Akcan
-;@Ahk2Exe-SetMainIcon app_icon.ico
-
 ; AS Pixel Color
-; 13/02/2026
+; 14/02/2026
 
 ; Mesut Akcan
 ; -----------
@@ -16,248 +9,354 @@
 
 ; TODO:
 ; - Implement 'Add to Favorites' feature for colors
-; - Option to toggle grid lines visibility
 
 #Requires AutoHotkey v2+
 #SingleInstance Force
 
-; ========== TRAY ICON ==========
-; Set tray icon for source code (ignored in compiled EXE)
+; ========== COMPILER DIRECTIVES ==========
+;@Ahk2Exe-SetName AS Pixel Color
+;@Ahk2Exe-SetDescription AS Pixel Color
+;@Ahk2Exe-SetFileVersion 2.2
+;@Ahk2Exe-SetCompanyName AkcanSoft
+;@Ahk2Exe-SetCopyright ©2026 Mesut Akcan
+;@Ahk2Exe-SetMainIcon app_icon.ico
+
+; Set tray icon while running as script (ignored in compiled EXE)
 ;@Ahk2Exe-IgnoreBegin
 try TraySetIcon(A_ScriptDir "\app_icon.ico")
 ;@Ahk2Exe-IgnoreEnd
 
-; Set coordinate mode to Screen
+; ========================================
+; SETTINGS AND STATE
+; ========================================
+global APP := {
+	Name: "AS Pixel Color",
+	Ver: "2.2",
+	Int: 100,               ; Update interval (ms)
+	Size: 216,              ; Grid display size (px)
+	MinCells: 3,            ; Keep at least 3x3 cells visible
+	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 15, 20, 25, 30, 37, 45, 55, 65, 70],
+	DefIdx: 6,              ; Default zoom index -> 15x
+	GridCol: 0xFFBCBCBC,    ; Grid and border color
+	EditBg: "BackgroundFFFFF0"
+}
+
+global State := {
+	ZoomIdx: APP.DefIdx,
+	ZoomLvl: APP.ZoomSteps[APP.DefIdx],
+	ZoomEnabled: true,
+	GridEnabled: true,
+	LastX: -1, LastY: -1, LastC: -1, LastZ: -1
+}
+
+; Screen-based coordinates for mouse and pixel sampling
 CoordMode("Mouse", "Screen")
 CoordMode("Pixel", "Screen")
 
 ; ========================================
-; GLOBAL CONSTANTS
+; GUI CREATION
 ; ========================================
-A_ScriptName := "AS Pixel Color"
-updateInterval := 100 ; Update interval in milliseconds
-zoomEnabled := true ; Zoom enabled by default
-defaultZoom := 15 ; Default zoom level
-zoomLevel := defaultZoom ; Current zoom level
-maxZoom := 45 ; Maximum zoom level
-minZoom := 3  ; Minimum zoom level
-gridColor := 0xFFBCBCBC ; Grid Color
-edtBgColor := "BackgroundFFFFF0" ; EditBox Background Color
-
-; ========================================
-; CREATE GUI
-; ========================================
-mGui := Gui("+AlwaysOnTop", A_ScriptName)
+mGui := Gui("+AlwaysOnTop", APP.Name)
 mGui.SetFont("s9", "Segoe UI")
 mGui.MarginX := 10
 mGui.MarginY := 10
 
-; ========================================
-; LEFT SIDE CONTROLS
-; ========================================
-
-; 1. Color Preview
+; Left panel
+; Color preview
 mGui.AddText("x10 y10", "Color Preview:")
 pb_Color := mGui.AddProgress("x10 y30 w216 h135 Border")
 
-; 2. Grid Settings
-totalGridSize := 216  ; Fixed total size
-startX := 10 ; Starting X coordinate for grid
-startY := 180 ; Starting Y coordinate for grid
+; Grid lines
+chk_GridLines := mGui.AddCheckBox("x10 y180 Checked", "Grid lines")
+chk_GridLines.OnEvent("Click", ToggleGridLines)
 
-; Create Background Border (Container)
-pb_GridBorder := mGui.AddProgress("x" startX - 1 " y" startY - 1 " w" totalGridSize + 2 " h" totalGridSize + 2)
+; Zoom
+gridDisplay := GDIPlusGrid(mGui, 10, 200, APP.Size, APP.GridCol)
 
-; Initialize GDI+ Grid
-gridDisplay := GDIPlusGrid(mGui, startX, startY, totalGridSize, gridColor)
+; Zoom slider
+sld_Zoom := mGui.AddSlider("x10 y420 w216 Range1-" APP.ZoomSteps.Length " ToolTip", State.ZoomIdx)
+sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom(ctrl.Value, true))
 
-; 3. Zoom controls
-; Slider (Range 0-21 maps to zoom 3-45: zoom = val * 2 + 3)
-sld_Zoom := mGui.AddSlider("x10 y400 w216 Range0-" (maxZoom - minZoom) // 2 " ToolTip", (zoomLevel - minZoom) // 2)
-sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom(ctrl.Value * 2 + minZoom, true))
-
-chk_Zoom := mGui.AddCheckBox("x10 y440 Checked", "Zoom")
+; Zoom checkbox
+chk_Zoom := mGui.AddCheckBox("x10 y465 Checked", "Zoom")
 chk_Zoom.OnEvent("Click", ToggleZoom)
 
-txt_ZoomLevel := mGui.AddText("x+5 yp w40 Center", Format("{}x{}", zoomLevel, zoomLevel))
+; Zoom level
+txt_ZoomLevel := mGui.AddText("x+5 yp w90 Center", "Zoom: " State.ZoomLvl "x")
+mGui.AddButton("x+5 yp-5 w60 h25", "Reset").OnEvent("Click", (*) => ChangeZoom(APP.DefIdx, true))
 
-btn_ZoomDefault := mGui.AddButton("x+5 yp-5 w60 h25", "Reset")
-btn_ZoomDefault.OnEvent("Click", (*) => ChangeZoom(defaultZoom, true))
+; Right panel
+rX := 240, gbW := 280
+chk_Upd := mGui.AddCheckBox("x" rX " y10 +Checked", "Update (F1)")
+mGui.AddCheckBox("x+15 yp +Checked", "Always on Top").OnEvent("Click", (ctrl, *) => WinSetAlwaysOnTop(ctrl.Value ? 1 :
+	0, mGui.Hwnd))
 
-; Add Mouse Wheel Support
-OnMessage(0x020A, WM_MOUSEWHEEL) ; 0x020A = WM_MOUSEWHEEL
+; Source info
+mGui.AddGroupBox("x" rX " y35 w" gbW " h130", "Source Info")
+txt_Position := mGui.AddText("x" rX + 10 " y55 w150", "Position: 0, 0")
 
-; ========================================
-; RIGHT SIDE CONTROLS
-; ========================================
-rightX := 240 ; Starting X coordinate for right side controls
-gbW := 280 ; groupbox width
+; RGB color codes
+rgbTags := ["Red", "Grn", "Blu"], rgbLabels := ["Red:", "Green:", "Blue:"], rgbColors := ["cRed", "cLime", "cBlue"]
+rgbCtrls := Map()
 
-; App Controls (Right Side Top)
-chk_Upd := mGui.AddCheckBox("x" rightX " y10 +Checked", "Update (F1)")
-chk_Aot := mGui.AddCheckBox("x+15 yp +Checked", "Always on Top")
-chk_Aot.OnEvent("Click", (*) => WinSetAlwaysOnTop(-1, "A"))
-
-; GroupBox 1: Source Info
-mGui.AddGroupBox("x" rightX " y35 w" gbW " h130", "Source Info")
-
-; 1. Position display (Inside GB1)
-txt_Position := mGui.AddText("x" rightX + 10 " y55 w150", "Position: 0, 0")
-
-; 2. RGB Components (Inside GB1)
-rgbY := 75 ; rgb y position
-txtW := 35 ; textbox width
-
-rgbTags := ["Red", "Grn", "Blu"]
-rgbLabels := ["Red:", "Green:", "Blue:"]
-rgbColors := ["cRed", "cLime", "cBlue"]
-rgbControls := Map()
-
-; RGB Component Controls
+; RGB color code boxes
 loop 3 {
-	i := A_Index
-	yPos := rgbY + (i - 1) * 27
-	mGui.AddText("x" rightX + 10 " y" yPos, rgbLabels[i])
-	rgbControls[rgbTags[i] "Hex"] := mGui.AddEdit("x" rightX + 50 " y" yPos - 3 " w" txtW " " edtBgColor)
-	rgbControls[rgbTags[i] "Dec"] := mGui.AddEdit("x+5 yp w" txtW " " edtBgColor)
-	rgbControls[rgbTags[i] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[i])
+	yPos := 75 + (A_Index - 1) * 27
+	mGui.AddText("x" rX + 10 " y" yPos, rgbLabels[A_Index])
+	rgbCtrls[rgbTags[A_Index] "Hex"] := mGui.AddEdit("x" rX + 50 " y" yPos - 3 " w35 " APP.EditBg)
+	rgbCtrls[rgbTags[A_Index] "Dec"] := mGui.AddEdit("x+5 yp w35 " APP.EditBg)
+	rgbCtrls[rgbTags[A_Index] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[
+		A_Index])
 }
 
-; GroupBox 2: Color Codes
-mGui.AddGroupBox("x" rightX " y170 w" gbW " h280", "Color Codes")
-
-; Text Formats (Inside GroupBox 2)
-fmtY := 190 ; text format y position
-
+; Color codes group box
+mGui.AddGroupBox("x" rX " y170 w" gbW " h280", "Color Codes")
 fields := ["Hex", "Dec", "Rgb", "RgbPercent", "Rgba", "Bgr", "Cmyk", "Hsl", "Hsv"]
 labels := ["HEX:", "DEC:", "RGB:", "RGB%:", "RGBA:", "BGR:", "CMYK:", "HSL:", "HSV:"]
-txtControls := Map()
+txtCtrls := Map()
 
+; Color code boxes
 loop fields.Length {
-	i := A_Index
-	yPos := fmtY + (i - 1) * 25
-	mGui.AddText("x" rightX + 10 " y" yPos, labels[i])
-	txtControls[fields[i]] := mGui.AddEdit("x" rightX + 50 " w160 y" yPos - 3 " " edtBgColor)
-	mGui.AddButton("x+5 yp-1 w50 V" fields[i], "Copy").OnEvent("Click", CopyToClipboard)
+	yPos := 190 + (A_Index - 1) * 25
+	mGui.AddText("x" rX + 10 " y" yPos, labels[A_Index])
+	txtCtrls[fields[A_Index]] := mGui.AddEdit("x" rX + 50 " w160 y" yPos - 3 " " APP.EditBg)
+	mGui.AddButton("x+5 yp-1 w50 V" fields[A_Index], "Copy").OnEvent("Click", CopyToClipboard)
 }
 
-mGui.AddText("x" rightX + 10 " y" fmtY + 225, "Color Name:")
-txt_Cn := mGui.AddEdit("x" rightX + 80 " y" fmtY + 222 " w130 " edtBgColor)
+; Color name
+mGui.AddText("x" rX + 10 " y415", "Color Name:")
+txt_Cn := mGui.AddEdit("x" rX + 80 " y412 w130 " APP.EditBg)
+; Buttons
 mGui.AddButton("x+5 yp-1 w50 VCn", "Copy").OnEvent("Click", CopyToClipboard)
-
-; App Controls (Right Side Bottom)
-btn_About := mGui.AddButton("x" rightX " y455 w80 h25", "About")
-btn_About.OnEvent("Click", About)
-
-btn_Close := mGui.AddButton("x+5 yp w80 h25", "Close")
-btn_Close.OnEvent("Click", (*) => ExitApp())
+mGui.AddButton("x" rX + 110 " y460 w80 h25", "About").OnEvent("Click", About)
+mGui.AddButton("x+5 yp w80 h25", "Close").OnEvent("Click", (*) => ExitApp())
 
 mGui.OnEvent("Close", (*) => ExitApp())
+OnMessage(0x020A, WM_MOUSEWHEEL) ; Mouse wheel zoom
+mGui.Show("w530 h500")
+
+SetTimer(UpdateLoop, APP.Int) ; Update loop
 
 ; ========================================
-; HOTKEYS
+; UPDATE LOGIC
 ; ========================================
-F1:: chk_Upd.Value := !chk_Upd.Value
-
-; --- Mouse Movement Hotkeys ---
-; Ctrl + Arrow Keys: Move mouse 1 pixel
-; Ctrl + Shift + Arrow Keys: Move mouse 10 pixels
-#HotIf !WinActive("ahk_class #32770") ; Do not run when dialogs are open
-^Up:: MoveMouse(0, -1) ; Ctrl+Up
-^Down:: MoveMouse(0, 1) ; Ctrl+Down
-^Left:: MoveMouse(-1, 0) ; Ctrl+Left
-^Right:: MoveMouse(1, 0) ; Ctrl+Right
-
-^+Up:: MoveMouse(0, -10) ; Ctrl+Shift+Up
-^+Down:: MoveMouse(0, 10) ; Ctrl+Shift+Down
-^+Left:: MoveMouse(-10, 0) ; Ctrl+Shift+Left
-^+Right:: MoveMouse(10, 0) ; Ctrl+Shift+Right
-#HotIf
-
-; ========================================
-; START APPLICATION
-; ========================================
-mGui.Show("w530 h490")
-SetTimer(UpdatePixelColor, updateInterval)
-
-; Zoom Control Functions
-ToggleZoom(*) {
-	global zoomEnabled, chk_Zoom
-	zoomEnabled := chk_Zoom.Value
-	gridDisplay.ctrl.Visible := zoomEnabled
-}
-
-ChangeZoom(value, isAbsolute := false, *) {
-	global zoomLevel, txt_ZoomLevel, sld_Zoom
-
-	; Calculate new zoom level
-	newZoom := isAbsolute ? ((value // 2) * 2 + 1) : zoomLevel + value
-
-	if (newZoom >= minZoom && newZoom <= maxZoom) {
-		zoomLevel := newZoom
-		txt_ZoomLevel.Value := Format("{}x{}", zoomLevel, zoomLevel)
-		if (IsSet(sld_Zoom)) {
-			sldVal := (zoomLevel - minZoom) // 2
-			if (sld_Zoom.Value != sldVal)
-				sld_Zoom.Value := sldVal
-		}
-		RefreshGrid()
-	}
-}
-
-; Mouse Wheel Support
-WM_MOUSEWHEEL(wParam, lParam, msg, hwnd) {
-	if (!chk_Zoom.Value)
+; Main loop that checks for mouse movement or color changes and updates the UI accordingly.
+UpdateLoop() {
+	if (!chk_Upd.Value)
 		return
 
-	; Wheel direction
-	delta := (wParam << 32 >> 48) ; 120 or -120
+	MouseGetPos(&mX, &mY)
+	currZ := State.ZoomLvl
 
-	; Use step of 2 to keep zoomLevel odd (3, 5, 7...)
-	if (delta > 0)
-		ChangeZoom(2, false)
-	else
-		ChangeZoom(-2, false)
+	try currC := Integer(PixelGetColor(mX, mY))
+	catch {
+		if (State.LastC < 0)
+			return
+		currC := State.LastC
+	}
+
+	posChanged := (mX != State.LastX || mY != State.LastY)
+	colorChanged := (currC != State.LastC)
+	zoomChanged := (currZ != State.LastZ)
+
+	; Only refresh what actually changed
+	if (posChanged || colorChanged) {
+		RefreshColorInfo(mX, mY, currC)
+		RefreshGrid(mX, mY, currZ)
+	} else if (zoomChanged) {
+		RefreshGrid(mX, mY, currZ)
+	}
+
+	State.LastX := mX, State.LastY := mY, State.LastC := currC, State.LastZ := currZ
 }
 
-; Copy to Clipboard
+; Refreshes the zoomed grid display based on the current mouse position and zoom level.
+RefreshGrid(x?, y?, z?) {
+	if (!State.ZoomEnabled)
+		return
+
+	if (!IsSet(x) || !IsSet(y))
+		MouseGetPos(&x, &y)
+
+	z := IsSet(z) ? z : State.ZoomLvl
+	txt_ZoomLevel.Value := "Zoom: " z "x"
+
+	colors := GetScreenColors(x, y, z, APP.Size)
+	gridDisplay.Draw(colors, z, State.GridEnabled)
+}
+
+; Updates the color information display (Hex, RGB, CMYK, etc.) for the current pixel.
+RefreshColorInfo(x, y, c) {
+	txt_Position.Value := Format("Position: {:4}, {:4}", x, y) ; Position
+
+	colorHex := Format("{:06X}", c) ; Color hex
+	txtCtrls["Hex"].Value := "#" colorHex ; Hex
+	txtCtrls["Dec"].Value := String(c) ; Dec
+	pb_Color.Opt("Background" colorHex) ; Color
+
+	r := (c >> 16) & 0xFF ; Red
+	g := (c >> 8) & 0xFF ; Green
+	b := c & 0xFF ; Blue
+
+	UpdateColorComponent(r, "Red", rgbCtrls) ; Red
+	UpdateColorComponent(g, "Grn", rgbCtrls) ; Green
+	UpdateColorComponent(b, "Blu", rgbCtrls) ; Blue
+
+	txtCtrls["Rgb"].Value := Format("rgb({}, {}, {})", r, g, b) ; RGB
+	txtCtrls["RgbPercent"].Value := Format("rgb({:.1f}%, {:.1f}%, {:.1f}%)", r / 2.55, g / 2.55, b / 2.55) ; RGB%
+	txtCtrls["Rgba"].Value := Format("rgba({}, {}, {}, 1.0)", r, g, b) ; RGBA
+	txtCtrls["Bgr"].Value := Format("${:02X}{:02X}{:02X}", b, g, r) ; BGR
+
+	cmyk := RGBtoCMYK(r, g, b) ; CMYK
+	txtCtrls["Cmyk"].Value := Format("cmyk({}%, {}%, {}%, {}%)", cmyk.c, cmyk.m, cmyk.y, cmyk.k)
+
+	hsl := RGBtoHSL(r, g, b) ; HSL
+	txtCtrls["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l)
+
+	hsv := RGBtoHSV(r, g, b) ; HSV
+	txtCtrls["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v)
+
+	txt_Cn.Value := GetColorName(colorHex)
+}
+
+; ========================================
+; TOOLS
+; ========================================
+; Toggles the zoom functionality on or off.
+ToggleZoom(ctrl, *) {
+	State.ZoomEnabled := ctrl.Value
+	gridDisplay.ctrl.Visible := ctrl.Value
+}
+
+; Toggles the visibility of grid lines in the zoom preview.
+ToggleGridLines(ctrl, *) {
+	State.GridEnabled := ctrl.Value
+	RefreshGrid()
+}
+
+; Changes the zoom level
+ChangeZoom(val, absolute := false) {
+	newIdx := absolute ? Round(val) : State.ZoomIdx + val
+	newIdx := Max(1, Min(APP.ZoomSteps.Length, newIdx))
+
+	if (newIdx != State.ZoomIdx) {
+		State.ZoomIdx := newIdx
+		State.ZoomLvl := APP.ZoomSteps[State.ZoomIdx]
+		RefreshGrid()
+	}
+
+	txt_ZoomLevel.Value := "Zoom: " State.ZoomLvl "x"
+	if (sld_Zoom.Value != State.ZoomIdx)
+		sld_Zoom.Value := State.ZoomIdx
+}
+
+; Handles mouse wheel events to adjust the zoom level.
+WM_MOUSEWHEEL(wParam, lParam, msg, hwnd) {
+	if (!State.ZoomEnabled)
+		return
+
+	delta := (wParam << 32 >> 48)
+	ChangeZoom(delta > 0 ? 1 : -1)
+}
+
+; Copies the text content of the clicked control to the clipboard.
 CopyToClipboard(ctrl, *) {
-	global txtControls, txt_Cn
-	textToCopy := ""
-
-	if (ctrl.Name = "Cn")
-		textToCopy := txt_Cn.Value
-	else if txtControls.Has(ctrl.Name)
-		textToCopy := txtControls[ctrl.Name].Value
-
-	if (textToCopy != "") {
-		A_Clipboard := textToCopy
-		ToolTip("Copied: " textToCopy)
+	val := (ctrl.Name = "Cn") ? txt_Cn.Value : txtCtrls[ctrl.Name].Value
+	if (val != "") {
+		A_Clipboard := val
+		ToolTip("Copied: " val)
 		SetTimer(() => ToolTip(), -1500)
 	}
 }
 
-; RGB to CMYK Color Conversion
-RGBtoCMYK(r, g, b) {
-	r := r / 255.0, g := g / 255.0, b := b / 255.0
-	k := 1 - Max(r, g, b)
+; Moves the mouse cursor relative to its current position and updates the display.
+MoveMouse(x, y) {
+	MouseMove(x, y, 0, "R")
+	UpdateLoop()
+}
 
-	if (k = 1)  ; Black
+; Updates the GUI controls for a specific color component (Red, Green, or Blue).
+UpdateColorComponent(val, tag, controls) {
+	controls[tag "Hex"].Value := Format("{:02X}", val)
+	controls[tag "Dec"].Value := String(val)
+	controls[tag "Pb"].Value := val
+
+	; Dynamic bar color by current channel intensity
+	if (tag = "Red")
+		cColor := (val << 16)
+	else if (tag = "Grn")
+		cColor := (val << 8)
+	else
+		cColor := val
+
+	controls[tag "Pb"].Opt(Format("c{:06X}", cColor))
+}
+
+; Calculates the number of visible cells in the grid based on frame size and zoom factor.
+GetVisibleCellCount(frameSize, zoomFactor, minCells := APP.MinCells) {
+	count := Floor((frameSize - 2) / zoomFactor) ; Calculate the number of visible cells in the grid
+	count := Max(minCells, count) ; Set the minimum number of visible cells
+	return Mod(count, 2) = 0 ? count - 1 : count ; Return the number of visible cells
+}
+
+; Captures the screen pixels around the cursor slightly larger than the visible area for the grid display.
+GetScreenColors(cX, cY, zoom, frameSize) {
+	count := GetVisibleCellCount(frameSize, zoom) ; Calculate the number of visible cells in the grid
+	half := count // 2 ; Calculate the half of the visible cells
+
+	hDC := DllCall("GetDC", "Ptr", 0, "Ptr") ; Get desktop window handle
+	mDC := DllCall("CreateCompatibleDC", "Ptr", hDC, "Ptr") ; Create a compatible DC
+	hBM := DllCall("CreateCompatibleBitmap", "Ptr", hDC, "Int", count, "Int", count, "Ptr") ; Create a compatible bitmap
+	oBM := DllCall("SelectObject", "Ptr", mDC, "Ptr", hBM, "Ptr") ; Select the bitmap into the DC
+
+	DllCall("BitBlt", "Ptr", mDC, "Int", 0, "Int", 0, "Int", count, "Int", count, "Ptr", hDC, "Int", cX - half, "Int",
+		cY - half, "UInt", 0x00CC0020) ; Copy the screen pixels to the bitmap
+
+	bi := Buffer(40, 0) ; Create a buffer to store the bitmap information
+	NumPut("UInt", 40, "Int", count, "Int", -count, "UShort", 1, "UShort", 32, bi) ; Set the bitmap information
+	pixelBuf := Buffer(count * count * 4) ; Create a buffer to store the pixel data
+	DllCall("GetDIBits", "Ptr", mDC, "Ptr", hBM, "UInt", 0, "UInt", count, "Ptr", pixelBuf, "Ptr", bi, "UInt", 0) ; Get the pixel data from the bitmap
+
+	DllCall("SelectObject", "Ptr", mDC, "Ptr", oBM) ; Select the original bitmap back into the DC
+	DllCall("DeleteObject", "Ptr", hBM) ; Delete the bitmap
+	DllCall("DeleteDC", "Ptr", mDC) ; Delete the DC
+	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC) ; Release the DC
+
+	res := [] ; Create an array to store the pixel data
+	loop count {
+		rIdx := A_Index ; Get the current row index
+		row := [] ; Create an array to store the pixel data for the current row
+		loop count {
+			off := ((rIdx - 1) * count + (A_Index - 1)) * 4 ; Calculate the offset to the current pixel data
+			bgrx := NumGet(pixelBuf, off, "UInt") ; Get the pixel data from the buffer
+			row.Push(((bgrx >> 16) & 0xFF) << 16 | ((bgrx >> 8) & 0xFF) << 8 | (bgrx & 0xFF)) ; Convert the pixel data to the correct format
+		}
+		res.Push(row) ; Add the row to the result array
+	}
+	return res ; Return the result array
+}
+
+; ========================================
+; COLOR CONVERSIONS
+; ========================================
+; Converts RGB color values to CMYK color space.
+RGBtoCMYK(r, g, b) {
+	rf := r / 255.0, gf := g / 255.0, bf := b / 255.0
+	k := 1 - Max(rf, gf, bf)
+
+	if (k = 1)
 		return { c: 0, m: 0, y: 0, k: 100 }
 
-	c := (1 - r - k) / (1 - k)
-	m := (1 - g - k) / (1 - k)
-	y := (1 - b - k) / (1 - k)
-
 	return {
-		c: Round(c * 100),
-		m: Round(m * 100),
-		y: Round(y * 100),
+		c: Round((1 - rf - k) / (1 - k) * 100),
+		m: Round((1 - gf - k) / (1 - k) * 100),
+		y: Round((1 - bf - k) / (1 - k) * 100),
 		k: Round(k * 100)
 	}
 }
 
-; Helper function for HSL/HSV shared logic
+; Shared RGB pre-calculation for HSL and HSV
+; Helper function to calculate common values (Hue, Max, Min, Delta) for HSL and HSV conversions.
 RGBtoHSX(r, g, b) {
 	r /= 255, g /= 255, b /= 255
 	mx := Max(r, g, b), mn := Min(r, g, b)
@@ -274,22 +373,22 @@ RGBtoHSX(r, g, b) {
 	return { h: Round(h * 360), mx: mx, mn: mn, d: d }
 }
 
-; RGB to HSL Color Conversion
+; Converts RGB color values to HSL (Hue, Saturation, Lightness).
 RGBtoHSL(r, g, b) {
 	res := RGBtoHSX(r, g, b)
 	l := (res.mx + res.mn) / 2
-	s := (res.d == 0) ? 0 : (l > 0.5 ? res.d / (2 - res.mx - res.mn) : res.d / (res.mx + res.mn))
+	s := (res.d = 0) ? 0 : (l > 0.5 ? res.d / (2 - res.mx - res.mn) : res.d / (res.mx + res.mn))
 	return { h: res.h, s: Round(s * 100), l: Round(l * 100) }
 }
 
-; RGB to HSV Color Conversion
+; Converts RGB color values to HSV (Hue, Saturation, Value).
 RGBtoHSV(r, g, b) {
 	res := RGBtoHSX(r, g, b)
-	s := (res.mx == 0) ? 0 : res.d / res.mx
+	s := (res.mx = 0) ? 0 : res.d / res.mx
 	return { h: res.h, s: Round(s * 100), v: Round(res.mx * 100) }
 }
 
-; Get Color Name
+; Retrieves the standard color name (e.g., 'Red', 'Azure') for a given hex color code.
 GetColorName(hexColor) {
 	static colorNames := Map(
 		"F0F8FF", "AliceBlue", "FAEBD7", "AntiqueWhite", "00FFFF", "Aqua", "7FFFD4", "Aquamarine",
@@ -326,336 +425,158 @@ GetColorName(hexColor) {
 		"D8BFD8", "Thistle", "FF6347", "Tomato", "40E0D0", "Turquoise", "EE82EE", "Violet", "F5DEB3", "Wheat",
 		"FFFFFF", "White", "F5F5F5", "WhiteSmoke", "FFFF00", "Yellow", "9ACD32", "YellowGreen"
 	)
-
-	return colorNames.Has(hexColor) ? colorNames[hexColor] : "" ; Unknown
+	return colorNames.Has(hexColor) ? colorNames[hexColor] : ""
 }
 
-; Update Pixel Color
-UpdatePixelColor() {
-	static lastX := -1, lastY := -1, lastZoom := -1, lastRGB := -1
-
-	if (!chk_Upd.Value)
-		return
-
-	MouseGetPos(&mX, &mY)
-	currZ := zoomLevel
-	try currC := Integer(PixelGetColor(mX, mY))
-	catch
-		currC := lastRGB
-
-	; Detect changes
-	posChanged := (mX != lastX || mY != lastY)
-	zoomChanged := (currZ != lastZoom)
-	colorChanged := (currC != lastRGB)
-
-	if (posChanged || colorChanged) {
-		RefreshColorInfo(mX, mY, currC)
-		RefreshGrid(mX, mY, currZ)
-	} else if (zoomChanged) {
-		RefreshGrid(mX, mY, currZ)
-	}
-
-	lastX := mX, lastY := mY, lastZoom := currZ, lastRGB := currC
-}
-
-; Move mouse and update UI immediately
-MoveMouse(x, y) {
-	MouseMove(x, y, 0, "R")
-	RefreshColorInfo()
-	RefreshGrid()
-}
-
-; Refresh Grid and Zoom labels only
-RefreshGrid(x?, y?, z?) {
-	global startX, startY, totalGridSize
-	if (!IsSet(x)) MouseGetPos(&x, &y)
-		if (!IsSet(z)) z := zoomLevel
-			txt_ZoomLevel.Value := Format("{}x{}", z, z)
-	if (zoomEnabled) {
-		gridColors := GetScreenColors(x, y, z)
-		gridDisplay.Draw(gridColors, z, pb_GridBorder, startX, startY, totalGridSize)
-	}
-}
-
-; Refresh Position and Color Codes only
-RefreshColorInfo(x?, y?, c?) {
-	if (!IsSet(x)) MouseGetPos(&x, &y)
-		if (!IsSet(c)) {
-			try c := Integer(PixelGetColor(x, y))
-			catch
-				return
-		}
-
-	txt_Position.Value := Format("Position: {:4}, {:4}", x, y)
-
-	colorHex := Format("{:06X}", c)
-	txtControls["Hex"].Value := "#" colorHex
-	txtControls["Dec"].Value := String(c)
-	pb_Color.Opt("Background" colorHex)
-
-	r := (c >> 16) & 0xFF, g := (c >> 8) & 0xFF, b := c & 0xFF
-	UpdateColorComponent(r, "Red", rgbControls)
-	UpdateColorComponent(g, "Grn", rgbControls)
-	UpdateColorComponent(b, "Blu", rgbControls)
-
-	rP := Round(r / 2.55, 1), gP := Round(g / 2.55, 1), bP := Round(b / 2.55, 1)
-	txtControls["RgbPercent"].Value := Format("rgb({:.1f}%, {:.1f}%, {:.1f}%)", rP, gP, bP)
-	txtControls["Rgb"].Value := Format("rgb({}, {}, {})", r, g, b)
-	txtControls["Rgba"].Value := Format("rgba({}, {}, {}, 1.0)", r, g, b)
-	txtControls["Bgr"].Value := Format("${:02X}{:02X}{:02X}", b, g, r)
-
-	cmyk := RGBtoCMYK(r, g, b)
-	txtControls["Cmyk"].Value := Format("cmyk({}%, {}%, {}%, {}%)", cmyk.c, cmyk.m, cmyk.y, cmyk.k)
-	hsl := RGBtoHSL(r, g, b)
-	txtControls["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l)
-	hsv := RGBtoHSV(r, g, b)
-	txtControls["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v)
-	txt_Cn.Value := GetColorName(colorHex)
-}
-
-; Update Color Component
-UpdateColorComponent(val, tag, controls) {
-	controls[tag "Hex"].Value := Format("{:02X}", val)
-	controls[tag "Dec"].Value := String(val)
-	controls[tag "Pb"].Value := val
-
-	; Determine dynamic color based on tag
-	if (tag == "Red")
-		cColor := (val << 16)
-	else if (tag == "Grn")
-		cColor := (val << 8)
-	else if (tag == "Blu")
-		cColor := val
-
-	controls[tag "Pb"].Opt(Format("c{:06X}", cColor))
-}
-
-; Screen Capture
-GetScreenColors(centerX, centerY, count) {
-	half := count // 2
-	left := centerX - half
-	top := centerY - half
-
-	; Capture screen area to memory bitmap
-	hDC := DllCall("GetDC", "Ptr", 0, "Ptr")
-	hMemDC := DllCall("CreateCompatibleDC", "Ptr", hDC, "Ptr")
-	hBM := DllCall("CreateCompatibleBitmap", "Ptr", hDC, "Int", count, "Int", count, "Ptr")
-	hOldBM := DllCall("SelectObject", "Ptr", hMemDC, "Ptr", hBM, "Ptr")
-
-	DllCall("BitBlt", "Ptr", hMemDC, "Int", 0, "Int", 0, "Int", count, "Int", count, "Ptr", hDC, "Int", left, "Int",
-		top, "UInt", 0x00CC0020)
-
-	; Setup BITMAPINFO for GetDIBits
-	bi := Buffer(40, 0)
-	NumPut("UInt", 40, bi, 0)  ; biSize
-	NumPut("Int", count, bi, 4)  ; biWidth
-	NumPut("Int", -count, bi, 8) ; biHeight (negative for top-down)
-	NumPut("UShort", 1, bi, 12)  ; biPlanes
-	NumPut("UShort", 32, bi, 14) ; biBitCount
-	NumPut("UInt", 0, bi, 16)    ; biCompression (BI_RGB)
-
-	bufSize := count * count * 4
-	pixelBuf := Buffer(bufSize)
-
-	DllCall("GetDIBits", "Ptr", hMemDC, "Ptr", hBM, "UInt", 0, "UInt", count, "Ptr", pixelBuf, "Ptr", bi, "UInt", 0)
-
-	; Cleanup GDI
-	DllCall("SelectObject", "Ptr", hMemDC, "Ptr", hOldBM)
-	DllCall("DeleteObject", "Ptr", hBM)
-	DllCall("DeleteDC", "Ptr", hMemDC)
-	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC)
-
-	; Process buffer into array of integers
-	colors := []
-	loop count {
-		rowIdx := A_Index
-		row := []
-		loop count {
-			colIdx := A_Index
-			offset := ((rowIdx - 1) * count + (colIdx - 1)) * 4
-			; GetDIBits returns BGRX
-			bgrx := NumGet(pixelBuf, offset, "UInt")
-			; Extract RGB and put into integer 0xRRGGBB
-			r := (bgrx >> 16) & 0xFF
-			g := (bgrx >> 8) & 0xFF
-			b := bgrx & 0xFF
-			row.Push((r << 16) | (g << 8) | b)
-		}
-		colors.Push(row)
-	}
-
-	return colors
-}
-
-; About Dialog
-About(*) {
-	msg := A_ScriptName " v2.1`n`n"
-	msg .= ("
-(
-Mesut Akcan
-makcan@gmail.com
-mesutakcan.blogspot.com
-youtube.com/mesutakcan
-)")
-
-	MsgBox(msg, A_ScriptName, "Icon 64 Owner" mGui.Hwnd)
-}
-
-; GDI+ CLASS
+; ========================================
+; GDI+ RENDERING CLASS
 ; ========================================
 class GDIPlusGrid {
-	__New(guiObj, x, y, size, bgColor := 0xFF000000) {
-		this.width := size
-		this.height := size
-		this.bgColor := bgColor
+	; Initializes the GDI+ grid object.
+	__New(guiObj, x, y, size, gridCol) {
+		this.scale := A_ScreenDPI / 96
+		this.pSize := Round(size * this.scale)
 
-		; Initialize GDI+
+		; GUI background color (for proper clearing)
+		sysCol := DllCall("GetSysColor", "Int", 15)
+		this.bgCol := 0xFF000000 | (sysCol & 0xFF) << 16 | (sysCol & 0xFF00) | (sysCol >> 16) & 0xFF
+
 		if !DllCall("GetModuleHandle", "Str", "gdiplus", "Ptr")
-			this.hModule := DllCall("LoadLibrary", "Str", "gdiplus", "Ptr")
+			this.hMod := DllCall("LoadLibrary", "Str", "gdiplus", "Ptr")
 
-		si := Buffer(24, 0)
-		NumPut("UInt", 1, si)
+		si := Buffer(24, 0), NumPut("UInt", 1, si)
 		DllCall("gdiplus\GdiplusStartup", "Ptr*", &pToken := 0, "Ptr", si, "Ptr", 0)
 		this.pToken := pToken
 
-		; Create Picture control to hold the bitmap
-		this.ctrl := guiObj.AddPicture("x" x " y" y " w" size " h" size " Background000000 0xE") ; 0xE = SS_BITMAP
+		this.ctrl := guiObj.AddPicture("x" x " y" y " w" size " h" size " BackgroundTrans 0xE")
 		this.hPic := this.ctrl.Hwnd
 
-		; Create Bitmap and Graphics context
-		DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", size, "Int", size, "Int", 0, "Int", 0x26200A, "Ptr", 0,
-			"Ptr*", &pBitmap := 0)
-		this.pBitmap := pBitmap
-		DllCall("gdiplus\GdipGetImageGraphicsContext", "Ptr", pBitmap, "Ptr*", &pGraphics := 0)
-		this.pGraphics := pGraphics
+		DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", this.pSize, "Int", this.pSize, "Int", 0, "Int", 0x26200A,
+			"Ptr", 0, "Ptr*", &pBM := 0)
+		this.pBM := pBM
+		DllCall("gdiplus\GdipGetImageGraphicsContext", "Ptr", pBM, "Ptr*", &pG := 0)
+		this.pG := pG
 
-		; Set smoothing mode to None (for pixel-perfect grid)
-		DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 0) ; 0 = Default (None)
-		DllCall("gdiplus\GdipSetPixelOffsetMode", "Ptr", pGraphics, "Int", 0) ; 0 = Default
-		DllCall("gdiplus\GdipSetInterpolationMode", "Ptr", pGraphics, "Int", 0) ; 0 = Default (NearestNeighbor)
+		DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", pG, "Int", 0)
+		DllCall("gdiplus\GdipSetPixelOffsetMode", "Ptr", pG, "Int", 0)
 
-		; Create Brushes
-		DllCall("gdiplus\GdipCreateSolidFill", "UInt", bgColor, "Ptr*", &pBrush := 0)
-		this.bgBrush := pBrush
+		DllCall("gdiplus\GdipCreateSolidFill", "UInt", gridCol, "Ptr*", &pB := 0)
+		this.gridBrush := pB
+		DllCall("gdiplus\GdipCreateSolidFill", "UInt", 0xFF000000, "Ptr*", &pCB := 0)
+		this.cellBrush := pCB
 	}
 
-	__Delete() {
-		if (this.pGraphics)
-			DllCall("gdiplus\GdipDeleteGraphics", "Ptr", this.pGraphics)
-		if (this.pBitmap)
-			DllCall("gdiplus\GdipDisposeImage", "Ptr", this.pBitmap)
-		if (this.bgBrush)
-			DllCall("gdiplus\GdipDeleteBrush", "Ptr", this.bgBrush)
-		if (this.pToken)
-			DllCall("gdiplus\GdiplusShutdown", "Ptr", this.pToken)
-		if (this.hModule)
-			DllCall("FreeLibrary", "Ptr", this.hModule)
-	}
+	; Draws the grid of pixels using GDI+.
+	Draw(colors, zoom, showGrid) {
+		; Clear previous frame
+		DllCall("gdiplus\GdipGraphicsClear", "Ptr", this.pG, "UInt", this.bgCol)
 
-	Draw(colors, zoomLvl, containerBorder, originalX, originalY, totalSize) {
-		cellSize := this.width // zoomLvl
-		actualSize := cellSize * zoomLvl
+		count := colors.Length
+		if (count < 1)
+			return
 
-		; Calculate offset to center the ENTIRE grid in the original area
-		offset := (totalSize - actualSize) // 2
-		newX := originalX + offset
-		newY := originalY + offset
+		cellSize := zoom * this.scale
+		actSize := cellSize * count
+		off := Max(0, (this.pSize - actSize) / 2)
 
-		; Resize the Picture Control and the Background Border to match actual grid size
-		try {
-			containerBorder.Move(newX - 1, newY - 1, actualSize + 2, actualSize + 2)
-			this.ctrl.Move(newX, newY, actualSize, actualSize)
-		}
+		bThick := Max(1, Floor(this.scale))
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.gridBrush, "Float", off - bThick, "Float", off -
+			bThick, "Float", actSize + 2 * bThick, "Float", actSize + 2 * bThick)
 
-		; Recreate Bitmap if size changed to ensure 1:1 mapping (no scaling artifacts)
-		if (!this.HasProp("currentWidth") || this.currentWidth != actualSize) {
-			; Dispose old objects
-			if (this.pGraphics)
-				DllCall("gdiplus\GdipDeleteGraphics", "Ptr", this.pGraphics)
-			if (this.pBitmap)
-				DllCall("gdiplus\GdipDisposeImage", "Ptr", this.pBitmap)
+		gap := (showGrid && cellSize >= 5 * this.scale) ? Max(1, Floor(this.scale)) : 0
 
-			; Create new Bitmap with EXACT size
-			DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", actualSize, "Int", actualSize, "Int", 0, "Int",
-				0x26200A, "Ptr", 0, "Ptr*", &pBitmap := 0)
-			this.pBitmap := pBitmap
-			DllCall("gdiplus\GdipGetImageGraphicsContext", "Ptr", pBitmap, "Ptr*", &pGraphics := 0)
-			this.pGraphics := pGraphics
-
-			; Reset smoothing modes for new graphics
-			DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 0)
-			DllCall("gdiplus\GdipSetPixelOffsetMode", "Ptr", pGraphics, "Int", 0)
-			DllCall("gdiplus\GdipSetInterpolationMode", "Ptr", pGraphics, "Int", 0)
-
-			this.currentWidth := actualSize
-			this.currentHeight := actualSize
-		}
-
-		; Clear background
-		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pGraphics, "Ptr", this.bgBrush, "Float", 0, "Float", 0,
-			"Float", actualSize, "Float", actualSize)
-
-		; Create solid brush specifically for grid drawing
-		DllCall("gdiplus\GdipCreateSolidFill", "UInt", 0xFF000000, "Ptr*", &pCellBrush := 0)
-
-		loop zoomLvl {
-			row := A_Index
-			if (row > colors.Length)
-				break
-			y := (row - 1) * cellSize
-			h := cellSize - 1
-
-			loop zoomLvl {
-				col := A_Index
-				if (col > colors[row].Length)
-					break
-				; colors is 1-indexed
-				rgb := colors[row][col]
-
-				; Convert to ARGB (Add Alpha FF)
-				argb := 0xFF000000 | rgb
-
-				; Set brush color
-				DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", pCellBrush, "UInt", argb)
-
-				; Calculate position with 1px gap (spacing logic: cellSize - 1)
-				x := (col - 1) * cellSize
-				w := cellSize - 1
-
-				; Fill rectangle
-				DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pGraphics, "Ptr", pCellBrush, "Float", x, "Float",
-					y, "Float", w, "Float", h)
+		loop count {
+			r := A_Index
+			y := (r - 1) * cellSize + off
+			h := Max(1, cellSize - gap)
+			loop count {
+				DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFF000000 | colors[r][A_Index]
+				)
+				DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", (A_Index - 1) *
+					cellSize + off, "Float", y, "Float", Max(1, cellSize - gap), "Float", h)
 			}
 		}
 
-		; Clean up cell brush
-		DllCall("gdiplus\GdipDeleteBrush", "Ptr", pCellBrush)
+		; Center marker: black outer border + white inner border
+		mid := (count // 2) + 1
+		hx := (mid - 1) * cellSize + off
+		hy := (mid - 1) * cellSize + off
+		hw := Max(1, cellSize - gap)
+		hh := Max(1, cellSize - gap)
 
-		; Highlight active pixel (center)
-		mid := (zoomLvl // 2) + 1
-		hx := (mid - 1) * cellSize
-		hy := (mid - 1) * cellSize
-		hw := cellSize - 1
-		hh := cellSize - 1
+		t := bThick
+		DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFF000000)
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx - t, "Float", hy - t,
+			"Float", hw + 2 * t, "Float", t)
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx - t, "Float", hy + hh,
+			"Float", hw + 2 * t, "Float", t)
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx - t, "Float", hy,
+			"Float", t, "Float", hh)
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx + hw, "Float", hy,
+			"Float", t, "Float", hh)
 
-		; Double-border for visibility (Black outer, White inner)
-		DllCall("gdiplus\GdipCreatePen1", "UInt", 0xFF000000, "Float", 1, "Int", 2, "Ptr*", &pPenB := 0)
-		DllCall("gdiplus\GdipDrawRectangle", "Ptr", this.pGraphics, "Ptr", pPenB, "Float", hx - 1, "Float", hy - 1,
-			"Float", hw + 2, "Float", hh + 2)
-		DllCall("gdiplus\GdipDeletePen", "Ptr", pPenB)
+		if (hw > 2 * t && hh > 2 * t) {
+			DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFFFFFFFF)
+			DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx, "Float", hy,
+				"Float",
+				hw, "Float", t)
+			DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx, "Float", hy + hh -
+				t, "Float", hw, "Float", t)
+			DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx, "Float", hy + t,
+				"Float", t, "Float", hh - 2 * t)
+			DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx + hw - t, "Float",
+				hy
+				+ t, "Float", t, "Float", hh - 2 * t)
+		}
 
-		DllCall("gdiplus\GdipCreatePen1", "UInt", 0xFFFFFFFF, "Float", 1, "Int", 2, "Ptr*", &pPenW := 0)
-		DllCall("gdiplus\GdipDrawRectangle", "Ptr", this.pGraphics, "Ptr", pPenW, "Float", hx, "Float", hy, "Float", hw,
-			"Float", hh)
-		DllCall("gdiplus\GdipDeletePen", "Ptr", pPenW)
+		DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "Ptr", this.pBM, "Ptr*", &hBM := 0, "UInt", this.bgCol)
+		oBM := DllCall("SendMessage", "Ptr", this.hPic, "UInt", 0x172, "Ptr", 0, "Ptr", hBM, "Ptr")
+		if (oBM)
+			DllCall("DeleteObject", "Ptr", oBM)
+	}
 
-		; Get HBITMAP from GDI+ Bitmap to display in Picture control
-		DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "Ptr", this.pBitmap, "Ptr*", &hBitmap := 0, "UInt", 0)
-
-		; Set the bitmap to the control
-		hOldBitmap := DllCall("SendMessage", "Ptr", this.hPic, "UInt", 0x172, "Ptr", 0, "Ptr", hBitmap, "Ptr")
-
-		if (hOldBitmap)
-			DllCall("DeleteObject", "Ptr", hOldBitmap)
+	; Cleans up GDI+ resources when the object is destroyed.
+	__Delete() {
+		DllCall("gdiplus\GdipDeleteBrush", "Ptr", this.gridBrush)
+		DllCall("gdiplus\GdipDeleteBrush", "Ptr", this.cellBrush)
+		DllCall("gdiplus\GdipDeleteGraphics", "Ptr", this.pG)
+		DllCall("gdiplus\GdipDisposeImage", "Ptr", this.pBM)
+		DllCall("gdiplus\GdiplusShutdown", "Ptr", this.pToken)
+		if this.HasProp("hMod")
+			DllCall("FreeLibrary", "Ptr", this.hMod)
 	}
 }
+
+; Displays the 'About' dialog box with version and author information.
+About(*) {
+	msg := Format("
+(
+{} v{}`n
+©2026 Mesut Akcan 
+makcan@gmail.com
+github.com/akcansoft
+mesutakcan.blogspot.com
+youtube.com/mesutakcan
+)", APP.Name, APP.Ver)
+
+	MsgBox(msg, APP.Name, "Icon 64 Owner" mGui.Hwnd)
+}
+
+; ========================================
+; HOTKEYS
+; ========================================
+F1:: chk_Upd.Value := !chk_Upd.Value
+
+; Ctrl + Arrow Keys: Move mouse 1 pixel
+; Ctrl + Shift + Arrow Keys: Move mouse 10 pixels
+#HotIf !WinActive("ahk_class #32770")
+^Up:: MoveMouse(0, -1)
+^Down:: MoveMouse(0, 1)
+^Left:: MoveMouse(-1, 0)
+^Right:: MoveMouse(1, 0)
+
+^+Up:: MoveMouse(0, -10)
+^+Down:: MoveMouse(0, 10)
+^+Left:: MoveMouse(-10, 0)
+^+Right:: MoveMouse(10, 0)
+#HotIf
