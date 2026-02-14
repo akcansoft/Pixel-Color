@@ -1,4 +1,4 @@
-# AS Pixel Color v2.1
+# AS Pixel Color v2.2
 
 **AS Pixel Color** is a professional, open-source real-time pixel color analysis tool developed with [AutoHotkey](https://www.autohotkey.com) v2. It provides a comprehensive set of color formats and analysis tools for designers, developers, and digital artists.
 
@@ -6,8 +6,9 @@
 
 ## 🌟 Key Features
 
-- **GDI+ Powered Pixel Zoom:** Examine pixels in detail with a zoom grid ranging from 3x3 to 45x45.
+- **GDI+ Powered Pixel Zoom:** Examine pixels in detail with a dynamic zoom grid ranging from **2x to 70x**.
 - **Active Pixel Highlighting:** The center pixel is highlighted with a high-contrast double border (Black & White) for optimal visibility on any background.
+- **Customizable Grid:** Toggle grid lines on or off for a cleaner view (`Grid lines` checkbox).
 - **Extensive Color Format Support:**
   - HEX, DEC, RGB, RGB (Percentage), RGBA, BGR
   - CMYK (Print-ready format)
@@ -17,7 +18,7 @@
 - **Advanced Zoom Controls:**
   - Precision slider for zoom adjustment.
   - Mouse Wheel support for quick zooming.
-  - One-click 'Reset' to the default 15x15 level.
+  - One-click 'Reset' to the default 15x level.
 - **User-Centric Interface:**
   - One-click copying for all color formats to the clipboard.
   - "Always on Top" mode to keep the tool visible.
@@ -37,7 +38,7 @@
         - <kbd>Arrow Keys</kbd>: Fine adjustment (+/- 1 step).
         - <kbd>PageUp</kbd> / <kbd>PageDown</kbd>: Coarse adjustment (+/- one large step).
         - <kbd>Home</kbd> / <kbd>End</kbd>: Jump to Min/Max zoom.
-    - Click **Reset** to return to 15x15 zoom.
+    - Click **Reset** to return to 15x zoom.
 5. **Copy to Clipboard:** Click the `Copy` button next to any format to copy its value instantly.
 6. **Exit:** Click the `Close` button or close the window to exit.
 
@@ -57,6 +58,15 @@ To use the source code:
 
 ## 📝 Version History
 
+- **v2.2 (2026-02-14):**
+  - **Grid Control:** Added a Grid lines toggle (Grid lines checkbox) for the zoom preview.
+  - **Zoom System:** Reworked with predefined zoom steps (now up to 70x) and smoother slider/mouse-wheel behavior.
+  - **Zoom Logic:** Improved preview logic: it now keeps an adaptive visible area (minimum 3x3 cells) and stays centered more consistently.
+  - **Screen Capture:** Upgraded for multi-monitor + screen-edge safety (better handling when the capture area goes out of bounds).
+  - **Architecture:** Refactored update flow with centralized APP / State objects and a render lock to avoid overlapping draws.
+  - **Performance:** Optimized refresh behavior: UI redraws only when position/color/zoom actually changes.
+  - **Code Quality:** Improved color conversion flow by reusing shared HSX calculations for HSL/HSV.
+  - **Rendering:** Updated GDI+ rendering pipeline to be more DPI-aware and visually consistent.
 - **v2.1 (2026-02-13):**
   - **Active Pixel Highlighting:** Added a high-contrast double border to the center pixel.
   - **Precision Control:** Added keyboard shortcuts for 1px and 10px mouse movement.
@@ -77,8 +87,9 @@ To use the source code:
 ## 👤 Author
 
 **Mesut Akcan**  
-📧 [makcan@gmail.com](mailto:makcan@gmail.com)  
-🌐 [akcanSoft Blog](https://akcansoft.blogspot.com)  
+📧 [makcan@gmail.com](mailto:makcan@gmail.com)   
+🌐 [akcanSoft Blog](https://akcansoft.blogspot.com)\
+🌐 [Mesut Akcan Blog](https://mesutakcan.blogspot.com)\
 🎥 [YouTube Channel](https://www.youtube.com/mesutakcan)  
 
 ## 🤝 Contributing
