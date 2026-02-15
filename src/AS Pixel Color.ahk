@@ -1,5 +1,5 @@
 ; AS Pixel Color
-; 14/02/2026
+; 16/02/2026
 
 ; Mesut Akcan
 ; -----------
@@ -16,7 +16,7 @@
 ; ========== COMPILER DIRECTIVES ==========
 ;@Ahk2Exe-SetName AS Pixel Color
 ;@Ahk2Exe-SetDescription AS Pixel Color
-;@Ahk2Exe-SetFileVersion 2.2
+;@Ahk2Exe-SetFileVersion 2.3
 ;@Ahk2Exe-SetCompanyName AkcanSoft
 ;@Ahk2Exe-SetCopyright ©2026 Mesut Akcan
 ;@Ahk2Exe-SetMainIcon app_icon.ico
@@ -31,14 +31,14 @@ try TraySetIcon(A_ScriptDir "\app_icon.ico")
 ; ========================================
 global APP := {
 	Name: "AS Pixel Color",
-	Ver: "2.2",
+	Ver: "2.3",
 	Interval: 100,          ; Update interval (ms)
 	Size: 216,              ; Grid display size (px)
 	MinCells: 3,            ; Keep at least 3x3 cells visible
 	DefIdx: 6,              ; Default zoom index -> 15x
 	GridCol: 0xFFBCBCBC,    ; Grid and border color
 	EditBg: "BackgroundFFFFF0", ; Edit controls background color
-	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 15, 20, 25, 30, 37, 45, 55, 65, 70] ; Zoom levels (x) corresponding to slider positions
+	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 14, 18, 23, 29, 36, 44, 53, 64, 72] ; Zoom levels (x) corresponding to slider positions
 }
 
 global State := {
@@ -51,9 +51,33 @@ global State := {
 	LastX: -1, LastY: -1, LastC: -1, LastZ: -1
 }
 
+global g_UsePhysicalCoords := false ; Whether to use physical coordinates for mouse/pixel capture (DPI-aware)
+
+; ========================================
+; HOTKEYS
+; ========================================
+F1:: chk_Upd.Value := !chk_Upd.Value
+
+; Ctrl + Arrow Keys: Move mouse 1 pixel
+; Ctrl + Shift + Arrow Keys: Move mouse 10 pixels
+#HotIf !WinActive("ahk_class #32770")
+^Up:: MoveMouse(0, -1)
+^Down:: MoveMouse(0, 1)
+^Left:: MoveMouse(-1, 0)
+^Right:: MoveMouse(1, 0)
+
+^+Up:: MoveMouse(0, -10)
+^+Down:: MoveMouse(0, 10)
+^+Left:: MoveMouse(-10, 0)
+^+Right:: MoveMouse(10, 0)
+#HotIf
+
 ; Screen-based coordinates for mouse and pixel sampling
 CoordMode("Mouse", "Screen")
 CoordMode("Pixel", "Screen")
+
+; DPI awareness to keep mouse/pixel coordinates aligned across mixed-scale monitors.
+InitDpiAwareness()
 
 ; ========================================
 ; GUI CREATION
@@ -64,6 +88,7 @@ mGui.MarginX := 10
 mGui.MarginY := 10
 
 ; Left panel
+;---------------------------------------------------------
 ; Color preview
 mGui.AddText("x10 y10", "Color Preview:")
 pb_Color := mGui.AddProgress("x10 y30 w216 h135 Border")
@@ -79,17 +104,16 @@ gridDisplay := GDIPlusGrid(mGui, 10, 200, APP.Size, APP.GridCol)
 sld_Zoom := mGui.AddSlider("x10 y420 w216 Range1-" APP.ZoomSteps.Length " ToolTip", State.ZoomIdx)
 sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom(ctrl.Value, true))
 
-; Zoom checkbox
-chk_Zoom := mGui.AddCheckBox("x10 y465 Checked", "Zoom")
-chk_Zoom.OnEvent("Click", ToggleZoom)
-
 ; Zoom level
-txt_ZoomLevel := mGui.AddText("x+5 yp w90 Center", "Zoom: " State.ZoomLvl "x")
-mGui.AddButton("x+5 yp-5 w60 h25", "Reset").OnEvent("Click", (*) => ChangeZoom(APP.DefIdx, true))
+txt_ZoomLevel := mGui.AddText("x10 y450 w216 Center", "Zoom : " State.ZoomLvl "x")
 
 ; Right panel
-rX := 240, gbW := 280
-chk_Upd := mGui.AddCheckBox("x" rX " y10 +Checked", "Update (F1)")
+;---------------------------------------------------------
+rX := 240 ; Right panel X offset
+gbW := 280 ; Group box width
+
+chk_Zoom := mGui.AddCheckBox("x" rX " y10 Checked", "Zoom").OnEvent("Click", ToggleZoom)
+chk_Upd := mGui.AddCheckBox("x+15 yp +Checked", "Update (F1)")
 mGui.AddCheckBox("x+15 yp +Checked", "Always on Top").OnEvent("Click", (ctrl, *) => WinSetAlwaysOnTop(ctrl.Value ? 1 :
 	0, mGui.Hwnd))
 
@@ -107,7 +131,8 @@ loop 3 {
 	mGui.AddText("x" rX + 10 " y" yPos, rgbLabels[A_Index])
 	rgbCtl[rgbTags[A_Index] "Hex"] := mGui.AddEdit("x" rX + 50 " y" yPos - 3 " w35 " APP.EditBg)
 	rgbCtl[rgbTags[A_Index] "Dec"] := mGui.AddEdit("x+5 yp w35 " APP.EditBg)
-	rgbCtl[rgbTags[A_Index] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[A_Index])
+	rgbCtl[rgbTags[A_Index] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[A_Index
+		])
 }
 
 ; Color codes group box
@@ -139,6 +164,8 @@ mGui.Show("w530 h500")
 SetTimer(UpdateLoop, APP.Interval) ; Update loop
 
 ; ========================================
+; FUNCTIONS
+; ========================================
 ; Main loop that checks for mouse movement or color changes and updates the UI accordingly.
 UpdateLoop() {
 	if (!chk_Upd.Value)
@@ -148,14 +175,19 @@ UpdateLoop() {
 	if (State.IsRendering)
 		return
 
-	MouseGetPos(&mX, &mY)
-	currZ := State.ZoomLvl
+	oldDpiCtx := EnterDpiCaptureContext()
+	try {
+		GetCursorPosForCapture(&mX, &mY)
+		currZ := State.ZoomLvl
 
-	try currC := Integer(PixelGetColor(mX, mY))
-	catch {
-		if (State.LastC < 0)
-			return
-		currC := State.LastC
+		currC := GetColorAtPhysical(mX, mY)
+		if (currC < 0) {
+			if (State.LastC < 0)
+				return
+			currC := State.LastC
+		}
+	} finally {
+		LeaveDpiCaptureContext(oldDpiCtx)
 	}
 
 	; Check what changed
@@ -180,19 +212,18 @@ RefreshGrid(x?, y?, z?) {
 		return
 
 	if (!IsSet(x) || !IsSet(y))
-		MouseGetPos(&x, &y)
+		GetCursorPosForCapture(&x, &y)
 
 	z := IsSet(z) ? z : State.ZoomLvl
-	txt_ZoomLevel.Value := "Zoom: " z "x"
 
-	try colors := GetScreenColors(x, y, z, APP.Size)
+	try capture := GetScreenColors(x, y, z, APP.Size)
 	catch
 		return
 
 	; Always release render lock, even if draw fails
 	State.IsRendering := true
 	try {
-		gridDisplay.Draw(colors, z, State.GridEnabled)
+		gridDisplay.Draw(capture, z, State.GridEnabled)
 	} finally {
 		State.IsRendering := false
 	}
@@ -234,13 +265,13 @@ RefreshColorInfo(x, y, c) {
 	txt_Cn.Value := GetColorName(colorHex)
 }
 
-; ========================================
-; TOOLS
-; ========================================
 ; Toggles the zoom functionality on or off.
 ToggleZoom(ctrl, *) {
 	State.ZoomEnabled := ctrl.Value
 	gridDisplay.ctrl.Visible := ctrl.Value
+	sld_Zoom.Visible := ctrl.Value
+	txt_ZoomLevel.Visible := ctrl.Value
+	chk_GridLines.Visible := ctrl.Value
 }
 
 ; Toggles the visibility of grid lines in the zoom preview.
@@ -260,7 +291,7 @@ ChangeZoom(val, absolute := false) {
 		RefreshGrid()
 	}
 
-	txt_ZoomLevel.Value := "Zoom: " State.ZoomLvl "x"
+	txt_ZoomLevel.Value := "Zoom : " State.ZoomLvl "x"
 	if (sld_Zoom.Value != State.ZoomIdx)
 		sld_Zoom.Value := State.ZoomIdx
 }
@@ -290,6 +321,46 @@ MoveMouse(x, y) {
 	UpdateLoop()
 }
 
+; Gets cursor position in coordinate space matching capture APIs.
+GetCursorPosForCapture(&x, &y) {
+	global g_UsePhysicalCoords
+	pt := Buffer(8, 0)
+	if (g_UsePhysicalCoords && DllCall("User32\GetPhysicalCursorPos", "Ptr", pt, "Int")) {
+		x := NumGet(pt, 0, "Int")
+		y := NumGet(pt, 4, "Int")
+		return
+	}
+	DllCall("User32\GetCursorPos", "Ptr", pt)
+	x := NumGet(pt, 0, "Int")
+	y := NumGet(pt, 4, "Int")
+}
+
+; Forces per-monitor-v2 DPI context for capture/sampling APIs on the current thread.
+EnterDpiCaptureContext() {
+	global g_UsePhysicalCoords
+	if (!g_UsePhysicalCoords)
+		return 0
+	return DllCall("User32\SetThreadDpiAwarenessContext", "Ptr", -4, "Ptr")
+}
+
+; Restores previous thread DPI context.
+LeaveDpiCaptureContext(oldCtx) {
+	if (oldCtx)
+		DllCall("User32\SetThreadDpiAwarenessContext", "Ptr", oldCtx, "Ptr")
+}
+
+; Reads pixel color using physical coordinates (returns RGB 0xRRGGBB, -1 on failure).
+GetColorAtPhysical(x, y) {
+	hDC := DllCall("GetDC", "Ptr", 0, "Ptr")
+	if (!hDC)
+		return -1
+	bgr := DllCall("GetPixel", "Ptr", hDC, "Int", x, "Int", y, "UInt")
+	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC)
+	if (bgr = 0xFFFFFFFF)
+		return -1
+	return ((bgr & 0xFF) << 16) | (bgr & 0x00FF00) | ((bgr >> 16) & 0xFF)
+}
+
 ; Updates the GUI controls for a specific color component (Red, Green, or Blue).
 UpdateColorComponent(val, tag, controls) {
 	controls[tag "Hex"].Value := Format("{:02X}", val)
@@ -308,94 +379,94 @@ UpdateColorComponent(val, tag, controls) {
 }
 
 ; Calculates the number of visible cells in the grid based on frame size and zoom factor.
-GetVisibleCellCount(frameSize, zoomFactor, minCells := APP.MinCells) {
-	count := Floor((frameSize - 2) / zoomFactor) ; Calculate the number of visible cells in the grid
-	count := Max(minCells, count) ; Set the minimum number of visible cells
+GetVisibleCellCount(frameSize, zoomFactor) {
+	count := Floor(frameSize / zoomFactor) ; Calculate how many cells fit without cropping
+	count := Max(APP.MinCells, count) ; Set the minimum number of visible cells
 	return Mod(count, 2) = 0 ? count - 1 : count ; Return the number of visible cells
 }
 
-; Captures the screen pixels around the cursor slightly larger than the visible area for the grid display.
+; Captures one extra pixel from each side (visible + 2) so the zoom view always fully fills after centered crop.
+GetCaptureCellCount(frameSize, zoomFactor) {
+	count := GetVisibleCellCount(frameSize, zoomFactor) + 2
+	return Mod(count, 2) = 0 ? count + 1 : count
+}
+
+; Captures the source area into a bitmap for single-pass nearest-neighbor scaling in Draw().
 GetScreenColors(cX, cY, zoom, frameSize) {
-	count := GetVisibleCellCount(frameSize, zoom) ; Calculate the number of visible cells in the grid
-	half := count // 2 ; Calculate the half of the visible cells
+	oldDpiCtx := EnterDpiCaptureContext()
+	try {
+		count := GetCaptureCellCount(frameSize, zoom) ; Capture one extra ring for edge crop fill
+		half := count // 2
 
-	; Virtual screen bounds (all monitors)
-	vLeft := DllCall("GetSystemMetrics", "Int", 76, "Int")
-	vTop := DllCall("GetSystemMetrics", "Int", 77, "Int")
-	vW := DllCall("GetSystemMetrics", "Int", 78, "Int")
-	vH := DllCall("GetSystemMetrics", "Int", 79, "Int")
-	vRight := vLeft + vW - 1
-	vBottom := vTop + vH - 1
+		; Virtual screen bounds (all monitors)
+		vLeft := DllCall("GetSystemMetrics", "Int", 76, "Int")
+		vTop := DllCall("GetSystemMetrics", "Int", 77, "Int")
+		vW := DllCall("GetSystemMetrics", "Int", 78, "Int")
+		vH := DllCall("GetSystemMetrics", "Int", 79, "Int")
+		vRight := vLeft + vW - 1
+		vBottom := vTop + vH - 1
 
-	srcX := cX - half
-	srcY := cY - half
+		srcX := cX - half
+		srcY := cY - half
 
-	; Intersect requested capture region with virtual screen
-	validX1 := Max(srcX, vLeft)
-	validY1 := Max(srcY, vTop)
-	validX2 := Min(srcX + count - 1, vRight)
-	validY2 := Min(srcY + count - 1, vBottom)
+		; Intersect requested capture region with virtual screen
+		validX1 := Max(srcX, vLeft)
+		validY1 := Max(srcY, vTop)
+		validX2 := Min(srcX + count - 1, vRight)
+		validY2 := Min(srcY + count - 1, vBottom)
+		hasValid := !(validX1 > validX2 || validY1 > validY2)
 
-	; If completely outside, return an empty grid (all cells invalid)
-	if (validX1 > validX2 || validY1 > validY2) {
-		res := []
-		loop count {
-			row := []
-			loop count
-				row.Push(-1)
-			res.Push(row)
+		hDC := DllCall("GetDC", "Ptr", 0, "Ptr")
+		if (!hDC)
+			return { hBM: 0, count: count }
+
+		mDC := DllCall("CreateCompatibleDC", "Ptr", hDC, "Ptr")
+		if (!mDC) {
+			DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC)
+			return { hBM: 0, count: count }
 		}
-		return res
-	}
 
-	bltW := validX2 - validX1 + 1
-	bltH := validY2 - validY1 + 1
-	dstX := validX1 - srcX
-	dstY := validY1 - srcY
-	validColStart := dstX + 1
-	validColEnd := validColStart + bltW - 1
-	validRowStart := dstY + 1
-	validRowEnd := validRowStart + bltH - 1
-
-	hDC := DllCall("GetDC", "Ptr", 0, "Ptr") ; Get desktop window handle
-	mDC := DllCall("CreateCompatibleDC", "Ptr", hDC, "Ptr") ; Create a compatible DC
-	hBM := DllCall("CreateCompatibleBitmap", "Ptr", hDC, "Int", count, "Int", count, "Ptr") ; Create a compatible bitmap
-	oBM := DllCall("SelectObject", "Ptr", mDC, "Ptr", hBM, "Ptr") ; Select the bitmap into the DC
-
-	DllCall("BitBlt", "Ptr", mDC, "Int", dstX, "Int", dstY, "Int", bltW, "Int", bltH, "Ptr", hDC, "Int", validX1, "Int",
-		validY1, "UInt", 0x00CC0020) ; Copy only the valid source pixels
-
-	bi := Buffer(40, 0) ; Create a buffer to store the bitmap information
-	NumPut("UInt", 40, "Int", count, "Int", -count, "UShort", 1, "UShort", 32, bi) ; Set the bitmap information
-	pixelBuf := Buffer(count * count * 4) ; Create a buffer to store the pixel data
-	DllCall("GetDIBits", "Ptr", mDC, "Ptr", hBM, "UInt", 0, "UInt", count, "Ptr", pixelBuf, "Ptr", bi, "UInt", 0) ; Get the pixel data from the bitmap
-
-	DllCall("SelectObject", "Ptr", mDC, "Ptr", oBM) ; Select the original bitmap back into the DC
-	DllCall("DeleteObject", "Ptr", hBM) ; Delete the bitmap
-	DllCall("DeleteDC", "Ptr", mDC) ; Delete the DC
-	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC) ; Release the DC
-
-	res := [] ; Create an array to store the pixel data
-	stride := count * 4
-
-	loop count {
-		rIdx := A_Index ; Get the current row index
-		row := [] ; Create an array to store the pixel data for the current row
-		baseOffset := (rIdx - 1) * stride
-
-		loop count {
-			cIdx := A_Index
-			if (rIdx >= validRowStart && rIdx <= validRowEnd && cIdx >= validColStart && cIdx <= validColEnd) {
-				off := baseOffset + (cIdx - 1) * 4
-				bgrx := NumGet(pixelBuf, off, "UInt") ; Get the pixel data from the buffer
-				row.Push(((bgrx >> 16) & 0xFF) << 16 | ((bgrx >> 8) & 0xFF) << 8 | (bgrx & 0xFF))
-			} else {
-				row.Push(-1)
-			}
+		hBM := DllCall("CreateCompatibleBitmap", "Ptr", hDC, "Int", count, "Int", count, "Ptr")
+		if (!hBM) {
+			DllCall("DeleteDC", "Ptr", mDC)
+			DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC)
+			return { hBM: 0, count: count }
 		}
-		res.Push(row) ; Add the row to the result array
+
+		oBM := DllCall("SelectObject", "Ptr", mDC, "Ptr", hBM, "Ptr")
+		if (!oBM) {
+			DllCall("DeleteObject", "Ptr", hBM)
+			DllCall("DeleteDC", "Ptr", mDC)
+			DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC)
+			return { hBM: 0, count: count }
+		}
+
+		; Fill full capture area with window background color to keep out-of-screen regions blank.
+		sysCol := DllCall("GetSysColor", "Int", 15, "UInt")
+		hBr := DllCall("CreateSolidBrush", "UInt", sysCol, "Ptr")
+		if (hBr) {
+			rc := Buffer(16, 0)
+			NumPut("Int", 0, "Int", 0, "Int", count, "Int", count, rc)
+			DllCall("FillRect", "Ptr", mDC, "Ptr", rc, "Ptr", hBr)
+			DllCall("DeleteObject", "Ptr", hBr)
+		}
+
+		if (hasValid) {
+			bltW := validX2 - validX1 + 1
+			bltH := validY2 - validY1 + 1
+			dstX := validX1 - srcX
+			dstY := validY1 - srcY
+			DllCall("BitBlt", "Ptr", mDC, "Int", dstX, "Int", dstY, "Int", bltW, "Int", bltH, "Ptr", hDC, "Int", validX1,
+				"Int", validY1, "UInt", 0x00CC0020)
+		}
+
+		DllCall("SelectObject", "Ptr", mDC, "Ptr", oBM)
+		DllCall("DeleteDC", "Ptr", mDC)
+		DllCall("ReleaseDC", "Ptr", 0, "Ptr", hDC)
+		return { hBM: hBM, count: count }
+	} finally {
+		LeaveDpiCaptureContext(oldDpiCtx)
 	}
-	return res ; Return the result array
 }
 
 ; ========================================
@@ -488,6 +559,47 @@ GetColorName(hexColor) {
 	return colorNames.Has(hexColor) ? colorNames[hexColor] : ""
 }
 
+; Displays the 'About' dialog box
+About(*) {
+	msg := Format("
+(
+{} v{}`n
+©2026 Mesut Akcan 
+makcan@gmail.com
+github.com/akcansoft
+mesutakcan.blogspot.com
+youtube.com/mesutakcan
+)",
+		APP.Name, APP.Ver)
+
+	MsgBox(msg, APP.Name, "Icon 64 Owner" mGui.Hwnd)
+}
+
+; Initializes the DPI awareness for the application to ensure correct scaling and coordinate handling on high-DPI displays.
+InitDpiAwareness() {
+	global g_UsePhysicalCoords
+	; Windows 10+: Per-monitor v2 awareness.
+	if DllCall("User32\SetProcessDpiAwarenessContext", "ptr", -4, "int")
+		g_UsePhysicalCoords := true
+	else {
+		; Windows 8.1 fallback: Per-monitor awareness.
+		if (DllCall("Shcore\SetProcessDpiAwareness", "int", 2, "int") = 0)
+			g_UsePhysicalCoords := true
+		else
+		; Legacy fallback: System DPI awareness.
+			DllCall("User32\SetProcessDPIAware")
+	}
+
+	; Some hosts/launchers lock process awareness. Verify thread PMv2 support explicitly.
+	prevCtx := DllCall("User32\SetThreadDpiAwarenessContext", "Ptr", -4, "Ptr")
+	if (prevCtx) {
+		DllCall("User32\SetThreadDpiAwarenessContext", "Ptr", prevCtx, "Ptr")
+		g_UsePhysicalCoords := true
+	} else {
+		g_UsePhysicalCoords := false
+	}
+}
+
 ; ========================================
 ; GDI+ RENDERING CLASS
 ; ========================================
@@ -508,7 +620,7 @@ class GDIPlusGrid {
 		DllCall("gdiplus\GdiplusStartup", "Ptr*", &pToken := 0, "Ptr", si, "Ptr", 0)
 		this.pToken := pToken
 
-		this.ctrl := guiObj.AddPicture("x" x " y" y " w" size " h" size " BackgroundTrans 0xE")
+		this.ctrl := guiObj.AddPicture("x" x " y" y " w" size " h" size " Border BackgroundTrans 0xE")
 		this.hPic := this.ctrl.Hwnd
 
 		DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", this.pSize, "Int", this.pSize, "Int", 0, "Int", 0x26200A,
@@ -518,7 +630,8 @@ class GDIPlusGrid {
 		this.pG := pG
 
 		DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", pG, "Int", 0)
-		DllCall("gdiplus\GdipSetPixelOffsetMode", "Ptr", pG, "Int", 0)
+		DllCall("gdiplus\GdipSetPixelOffsetMode", "Ptr", pG, "Int", 4) ; PixelOffsetModeNone (avoid half-pixel shifts)
+		DllCall("gdiplus\GdipSetInterpolationMode", "Ptr", pG, "Int", 5) ; Nearest-neighbor for crisp pixel zoom
 
 		DllCall("gdiplus\GdipCreateSolidFill", "UInt", gridCol, "Ptr*", &pB := 0)
 		this.gridBrush := pB
@@ -526,36 +639,42 @@ class GDIPlusGrid {
 		this.cellBrush := pCB
 	}
 
-	; Draws the grid of pixels using GDI+.
-	Draw(colors, zoom, showGrid) {
+	; Draws one captured bitmap frame, scales it by zoom, then overlays optional grid and center marker.
+	Draw(capture, zoom, showGrid) {
 		; Clear previous frame
 		DllCall("gdiplus\GdipGraphicsClear", "Ptr", this.pG, "UInt", this.bgCol)
 
-		count := colors.Length
-		if (count < 1)
+		if (!IsObject(capture))
 			return
 
-		cellSize := zoom * this.scale
+		count := capture.count
+		hSrcBM := capture.hBM
+		if (count < 1 || !hSrcBM)
+			return
+
+		cellSize := Max(1, Round(zoom * this.scale))
 		actSize := cellSize * count
-		off := Max(0, (this.pSize - actSize) / 2)
+		off := Floor((this.pSize - actSize) / 2) ; Integer align to keep image and grid on same pixel boundaries
 
-		bThick := Max(1, Floor(this.scale))
-		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.gridBrush, "Float", off - bThick, "Float", off -
-			bThick, "Float", actSize + 2 * bThick, "Float", actSize + 2 * bThick)
+		pSrc := 0
+		if (DllCall("gdiplus\GdipCreateBitmapFromHBITMAP", "Ptr", hSrcBM, "Ptr", 0, "Ptr*", &pSrc := 0, "Int") = 0 && pSrc
+		) {
+			DllCall("gdiplus\GdipDrawImageRectRect", "Ptr", this.pG, "Ptr", pSrc, "Float", off, "Float", off, "Float",
+				actSize, "Float", actSize, "Float", 0.0, "Float", 0.0, "Float", count, "Float", count, "Int", 2, "Ptr",
+				0, "Ptr", 0, "Ptr", 0)
+			DllCall("gdiplus\GdipDisposeImage", "Ptr", pSrc)
+		}
+		DllCall("DeleteObject", "Ptr", hSrcBM)
 
-		gap := (showGrid && cellSize >= 5 * this.scale) ? Max(1, Floor(this.scale)) : 0
-
-		loop count {
-			r := A_Index
-			y := (r - 1) * cellSize + off
-			h := Max(1, cellSize - gap)
-			loop count {
-				cellColor := colors[r][A_Index]
-				if (cellColor < 0)
-					continue
-				DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFF000000 | cellColor)
-				DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", (A_Index - 1) *
-					cellSize + off, "Float", y, "Float", Max(1, cellSize - gap), "Float", h)
+		if (showGrid && cellSize >= 5 * this.scale && count > 1) {
+			gThick := Max(1, Floor(this.scale))
+			loop count - 1 {
+				vx := off + A_Index * cellSize - Floor(gThick / 2)
+				hy := off + A_Index * cellSize - Floor(gThick / 2)
+				DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.gridBrush, "Float", vx, "Float", off,
+					"Float", gThick, "Float", actSize)
+				DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.gridBrush, "Float", off, "Float", hy,
+					"Float", actSize, "Float", gThick)
 			}
 		}
 
@@ -563,10 +682,10 @@ class GDIPlusGrid {
 		mid := (count // 2) + 1
 		hx := (mid - 1) * cellSize + off
 		hy := (mid - 1) * cellSize + off
-		hw := Max(1, cellSize - gap)
-		hh := Max(1, cellSize - gap)
+		hw := Max(1, cellSize)
+		hh := Max(1, cellSize)
 
-		t := bThick
+		t := Max(1, Floor(this.scale))
 		DllCall("gdiplus\GdipSetSolidFillColor", "Ptr", this.cellBrush, "UInt", 0xFF000000)
 		DllCall("gdiplus\GdipFillRectangle", "Ptr", this.pG, "Ptr", this.cellBrush, "Float", hx - t, "Float", hy - t,
 			"Float", hw + 2 * t, "Float", t)
@@ -608,37 +727,3 @@ class GDIPlusGrid {
 			DllCall("FreeLibrary", "Ptr", this.hMod)
 	}
 }
-
-; Displays the 'About' dialog box with version and author information.
-About(*) {
-	msg := Format("
-(
-{} v{}`n
-©2026 Mesut Akcan 
-makcan@gmail.com
-github.com/akcansoft
-mesutakcan.blogspot.com
-youtube.com/mesutakcan
-)", APP.Name, APP.Ver)
-
-	MsgBox(msg, APP.Name, "Icon 64 Owner" mGui.Hwnd)
-}
-
-; ========================================
-; HOTKEYS
-; ========================================
-F1:: chk_Upd.Value := !chk_Upd.Value
-
-; Ctrl + Arrow Keys: Move mouse 1 pixel
-; Ctrl + Shift + Arrow Keys: Move mouse 10 pixels
-#HotIf !WinActive("ahk_class #32770")
-^Up:: MoveMouse(0, -1)
-^Down:: MoveMouse(0, 1)
-^Left:: MoveMouse(-1, 0)
-^Right:: MoveMouse(1, 0)
-
-^+Up:: MoveMouse(0, -10)
-^+Down:: MoveMouse(0, 10)
-^+Left:: MoveMouse(-10, 0)
-^+Right:: MoveMouse(10, 0)
-#HotIf
