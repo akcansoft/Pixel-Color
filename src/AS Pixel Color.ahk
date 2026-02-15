@@ -35,7 +35,7 @@ global APP := {
 	Interval: 100,          ; Update interval (ms)
 	Size: 216,              ; Grid display size (px)
 	MinCells: 3,            ; Keep at least 3x3 cells visible
-	DefIdx: 6,              ; Default zoom index -> 15x
+	DefIdx: 6,              ; Default zoom index
 	GridCol: 0xFFBCBCBC,    ; Grid and border color
 	EditBg: "BackgroundFFFFF0", ; Edit controls background color
 	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 14, 18, 23, 29, 36, 44, 53, 64, 72] ; Zoom levels (x) corresponding to slider positions
@@ -43,7 +43,7 @@ global APP := {
 
 global State := {
 	ZoomIdx: APP.DefIdx,                ; Current zoom index in the ZoomSteps array
-	ZoomLvl: APP.ZoomSteps[APP.DefIdx], ; Current zoom level (e.g., 15x)
+	ZoomLvl: APP.ZoomSteps[APP.DefIdx], ; Current zoom level
 	ZoomEnabled: true,                  ; Whether zoom preview is enabled
 	GridEnabled: true,                  ; Whether grid lines are enabled
 	IsRendering: false,                 ; Flag to prevent updates while rendering is in progress
