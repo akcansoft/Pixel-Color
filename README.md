@@ -1,9 +1,9 @@
-# AS Pixel Color v2.3
+# AS Pixel Color v2.4
 
 [![AutoHotkey](https://img.shields.io/badge/Language-AutoHotkey_v2-green.svg)](https://www.autohotkey.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://www.microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-GPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.3-brightgreen.svg)](https://github.com/akcansoft/Pixel-Color/releases) 
+[![Version](https://img.shields.io/badge/Version-2.4-brightgreen.svg)](https://github.com/akcansoft/Pixel-Color/releases) 
 
 ![GitHub stars](https://img.shields.io/github/stars/akcansoft/Pixel-Color?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/akcansoft/Pixel-Color?style=social)
@@ -16,35 +16,33 @@
 
 ## 🌟 Key Features
 
+- **Integrated Color Palette:** Save sampled colors to a persistent palette. Supports up to 52 colors with automatic persistence across sessions.
+- **Smart Palette Management:** Automatically prevents duplicate colors and includes a "Sort" feature to organize colors by perceptual luminance (dark to light).
+- **Modern Menu Bar Interface:** Quick access to all features via a structured menu system (File, Settings, Palette, Help).
 - **GDI+ Pixel Zoom Preview:** Inspect screen pixels in detail with a real-time zoom preview from **2x to 72x**.
-- **DPI-Aware Sampling:** Uses per-monitor DPI awareness and physical-coordinate capture for more reliable color picking on mixed-DPI multi-monitor setups.
+- **DPI-Aware Sampling:** Uses per-monitor DPI awareness and physical-coordinate capture for precise color picking on mixed-DPI multi-monitor setups.
 - **Active Pixel Highlighting:** The center pixel is marked with a high-contrast double border (black + white) for clear visibility.
-- **Grid Control:** Enable or disable grid lines in the zoom preview with a single checkbox.
+- **Flexible UI Controls:** Toggle Zoom, Grid lines, and Auto-Update via checkboxes or the menu bar.
 - **Extensive Color Format Support:** HEX, DEC, RGB, RGB (%), RGBA, BGR, CMYK, HSL, and HSV.
-- **Color Name Recognition:** Detects standard named colors (for example, AliceBlue, Crimson) instantly.
-- **Detailed RGB Analysis:** Displays channel values in both numeric form and visual progress bars.
-- **Fast, Efficient Rendering:** Refresh logic updates only when position, color, or zoom changes, with a bitmap-based capture/render pipeline.
-- **User-Friendly Controls:**
-  - One-click copy buttons for every color format.
-  - `Update (F1)` toggle to pause/resume real-time tracking.
-  - `Zoom` toggle to quickly show/hide zoom-related controls.
-  - `Always on Top`, `About`, and `Close` controls.
+- **Color Name Recognition:** Detects standard named colors (e.g., AliceBlue, Crimson) instantly.
+- **Detailed RGB Analysis:** Displays channel values numerically and with visual progress bars that change color based on intensity.
+- **Precision Shortcuts:** Custom hotkeys for micro-movements and quick actions.
 
 ## ⌨️ Shortcuts and Usage
 
 1. **Track Motion:** Move the mouse anywhere on screen to inspect the current pixel in real time.
-2. **Pause/Resume Updates:** Press <kbd>F1</kbd> to toggle live updates.
-3. **Precision Mouse Move:**
-   - <kbd>Ctrl</kbd> + <kbd>Arrow Keys</kbd>: move the cursor by **1 pixel**.
-   - <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Arrow Keys</kbd>: move the cursor by **10 pixels**.
-4. **Adjust Zoom:**
+2. **Pause/Resume Updates:** Press <kbd>F1</kbd> to toggle live updates (or use the Update checkbox/menu).
+3. **Save Color to Palette:** Press <kbd>F2</kbd> (or use the Add button/menu) to save the current color.
+4. **Precision Mouse Move:**
+   - <kbd>Ctrl</kbd> + <kbd>Arrow Keys</kbd>: Move the cursor by **1 pixel**.
+   - <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Arrow Keys</kbd>: Move the cursor by **10 pixels**.
+5. **Adjust Zoom:**
    - Use the **Mouse Wheel** to increase/decrease zoom.
    - Use the **Zoom Slider** for direct level selection.
-5. **Toggle Zoom/Grid:**
-   - Use the **Zoom** checkbox to show/hide zoom preview and controls.
-   - Use **Grid lines** to switch grid overlay on/off.
-6. **Copy Values:** Click any `Copy` button to send the selected value to clipboard.
-7. **Exit:** Use **Close** (or close the window) to terminate the app.
+6. **Toggle Zoom/Grid:**
+   - Use the **Zoom** checkbox/menu to show/hide zoom preview.
+   - Use **Grid lines** checkbox/menu to switch grid overlay on/off.
+7. **Copy Values:** Click any `Copy` button to send the selected value to clipboard.
 
 ## 🛠️ Technical Setup
 
@@ -61,6 +59,13 @@ Download and run the `.exe` file for your system from the [releases](https://git
 
 ## 📝 Version History
 
+- **v2.4 (2026-02-17):**
+  - Added **Color Palette system** with persistence (`palette.txt`).
+  - Implemented **Duplicate Prevention** and **Luminance Sorting** for the palette.
+  - Added a **Comprehensive Menu Bar** for better feature accessibility.
+  - Expanded UI layout to accommodate the palette and improved control grouping.
+  - Added <kbd>F2</kbd> shortcut for adding colors to the palette.
+  - Refactored technical core with a centralized `CONFIG` object.
 - **v2.3 (2026-02-16):**
   - Added DPI-aware capture flow with physical cursor/pixel sampling support.
   - Refactored screen capture and zoom rendering to a bitmap-based, nearest-neighbor pipeline.
@@ -93,13 +98,13 @@ Download and run the `.exe` file for your system from the [releases](https://git
 - **v1.0 (2024-03-20):**
   - Initial release.
 
+## 🤝 Contributing
+
+Contributions are welcome. Open a [pull request](https://github.com/akcansoft/Pixel-Color/pulls) or submit an [issue](https://github.com/akcansoft/Pixel-Color/issues) to suggest features or report bugs.
+
 ## 👤 Author
 
 **Mesut Akcan**  
 Email: [makcan@gmail.com](mailto:makcan@gmail.com)  
 Blog: [akcanSoft Blog](https://akcansoft.blogspot.com) | [Mesut Akcan Blog](https://mesutakcan.blogspot.com)\
 YouTube: [YouTube Channel](https://www.youtube.com/mesutakcan)
-
-## 🤝 Contributing
-
-Contributions are welcome. Open a [pull request](https://github.com/akcansoft/Pixel-Color/pulls) or submit an [issue](https://github.com/akcansoft/Pixel-Color/issues) to suggest features or report bugs.
