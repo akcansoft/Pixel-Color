@@ -1,5 +1,5 @@
 ; AS Pixel Color
-; 16/02/2026
+; 17/02/2026
 
 ; Mesut Akcan
 ; -----------
@@ -7,16 +7,13 @@
 ; mesutakcan.blogspot.com
 ; youtube.com/mesutakcan
 
-; TODO:
-; - Implement 'Add to Favorites' feature for colors
-
 #Requires AutoHotkey v2+
 #SingleInstance Force
 
 ; ========== COMPILER DIRECTIVES ==========
 ;@Ahk2Exe-SetName AS Pixel Color
 ;@Ahk2Exe-SetDescription AS Pixel Color
-;@Ahk2Exe-SetFileVersion 2.3
+;@Ahk2Exe-SetFileVersion 2.4
 ;@Ahk2Exe-SetCompanyName AkcanSoft
 ;@Ahk2Exe-SetCopyright ©2026 Mesut Akcan
 ;@Ahk2Exe-SetMainIcon app_icon.ico
@@ -31,32 +28,63 @@ try TraySetIcon(A_ScriptDir "\app_icon.ico")
 ; ========================================
 global APP := {
 	Name: "AS Pixel Color",
-	Ver: "2.3",
+	Ver: "2.4",
 	Interval: 100,          ; Update interval (ms)
-	Size: 216,              ; Grid display size (px)
 	MinCells: 3,            ; Keep at least 3x3 cells visible
 	DefIdx: 6,              ; Default zoom index
-	GridCol: 0xFFBCBCBC,    ; Grid and border color
-	EditBg: "BackgroundFFFFF0", ; Edit controls background color
-	ZoomSteps: [2, 3, 4, 5, 7, 9, 11, 14, 18, 23, 29, 36, 44, 53, 64, 72] ; Zoom levels (x) corresponding to slider positions
+	PaletteFile: A_ScriptDir "\palette.txt"
+}
+
+global CONFIG := {
+	Ctl: {
+		X: 10,  ; Control X position
+		Y: 10,  ; Control Y position
+		W: 216, ; Control Width
+		H: 135  ; Control Height
+	},
+	Colors: {
+		Grid: 0xFFBCBCBC,           ; Grid line color
+		edtBg: "BackgroundFFFFF0"   ; Edit background color
+	},
+	Zoom: [2, 3, 4, 5, 6, 7, 8, 11, 14, 17, 22, 28, 35, 45, 57, 72], ; Zoom levels (multipliers)
+	Palette: {
+		CellSize: 25, ; Palette cell size
+		Gap: 2,       ; Palette cell gap
+		Cols: 4       ; Palette columns
+	}
 }
 
 global State := {
 	ZoomIdx: APP.DefIdx,                ; Current zoom index in the ZoomSteps array
-	ZoomLvl: APP.ZoomSteps[APP.DefIdx], ; Current zoom level
+	ZoomLvl: CONFIG.Zoom[APP.DefIdx],   ; Current zoom level
 	ZoomEnabled: true,                  ; Whether zoom preview is enabled
 	GridEnabled: true,                  ; Whether grid lines are enabled
 	IsRendering: false,                 ; Flag to prevent updates while rendering is in progress
+	PaletteMax: 52,                     ; Maximum number of colors in the palette
+	Palette: [],                        ; Palette color list (HEX without #)
+	PaletteChanged: false,              ; Whether palette content changed since last save
 	; Mouse position, color, and zoom level from the last update cycle
-	LastX: -1, LastY: -1, LastC: -1, LastZ: -1
+	LastX: -1, LastY: -1, LastC: -1, LastZ: -1,
+	PalCtl: []                          ; Store palette swatch control references
 }
 
 global g_UsePhysicalCoords := false ; Whether to use physical coordinates for mouse/pixel capture (DPI-aware)
 
+; Screen-based coordinates for mouse and pixel sampling
+CoordMode("Mouse", "Screen")
+CoordMode("Pixel", "Screen")
+
+; DPI awareness to keep mouse/pixel coordinates aligned across mixed-scale monitors.
+InitDpiAwareness()
+
+LoadPaletteFromDisk() ; Load saved palette on startup
+OnExit(SavePaletteToDisk) ; Save palette on exit
+
 ; ========================================
 ; HOTKEYS
 ; ========================================
-F1:: chk_Upd.Value := !chk_Upd.Value
+F1:: ToggleUpdate()
+F2:: AddColorToPalette()
 
 ; Ctrl + Arrow Keys: Move mouse 1 pixel
 ; Ctrl + Shift + Arrow Keys: Move mouse 10 pixels
@@ -72,13 +100,6 @@ F1:: chk_Upd.Value := !chk_Upd.Value
 ^+Right:: MoveMouse(10, 0)
 #HotIf
 
-; Screen-based coordinates for mouse and pixel sampling
-CoordMode("Mouse", "Screen")
-CoordMode("Pixel", "Screen")
-
-; DPI awareness to keep mouse/pixel coordinates aligned across mixed-scale monitors.
-InitDpiAwareness()
-
 ; ========================================
 ; GUI CREATION
 ; ========================================
@@ -87,39 +108,105 @@ mGui.SetFont("s9", "Segoe UI")
 mGui.MarginX := 10
 mGui.MarginY := 10
 
-; Left panel
-;---------------------------------------------------------
-; Color preview
-mGui.AddText("x10 y10", "Color Preview:")
-pb_Color := mGui.AddProgress("x10 y30 w216 h135 Border")
+; ==============================
+; MENU
+; ==============================
+menuText := {
+	File: "&File",
+	Settings: "&Settings",
+	Palette: "&Palette",
+	Help: "&Help",
+	Exit: "&Exit`tAlt+F4",
+	ZoomPreview: "&Zoom Preview",
+	GridLines: "&Grid Lines",
+	AutoUpdate: "&Auto Update`tF1",
+	AlwaysOnTop: "&Always on Top",
+	AddToPalette: "&Add to palette`tF2",
+	SortColors: "&Sort colors",
+	About: "&About",
+	Website: "&Website",
+	GitHubRepo: "&GitHub repo"
+}
 
-; Grid lines
-chk_GridLines := mGui.AddCheckBox("x10 y180 Checked", "Grid lines")
-chk_GridLines.OnEvent("Click", ToggleGridLines)
+; File menu
+mnu_File := Menu()
+mnu_File.Add(menuText.Exit, (*) => ExitApp())
+
+; Settings menu
+mnu_Settings := Menu()
+mnu_Settings.Add(menuText.AlwaysOnTop, ToggleAlwaysOnTop)
+mnu_Settings.Add(menuText.AutoUpdate, ToggleUpdate)
+mnu_Settings.Add() ; Separator
+mnu_Settings.Add(menuText.ZoomPreview, ToggleZoom)
+mnu_Settings.Add(menuText.GridLines, ToggleGridLines)
+
+; Palette menu
+mnu_Palette := Menu()
+mnu_Palette.Add(menuText.AddToPalette, (*) => AddColorToPalette())
+mnu_Palette.Add(menuText.SortColors, (*) => SortPalette())
+
+; Set initial checkmarks
+mnu_Settings.Check(menuText.ZoomPreview)
+mnu_Settings.Check(menuText.GridLines)
+mnu_Settings.Check(menuText.AutoUpdate)
+mnu_Settings.Check(menuText.AlwaysOnTop)
+
+; Help menu
+mnu_Help := Menu()
+mnu_Help.Add(menuText.About, About)
+mnu_Help.Add() ; Separator
+mnu_Help.Add(menuText.Website, (*) => Run("https://mesutakcan.blogspot.com"))
+mnu_Help.Add(menuText.GitHubRepo, (*) => Run("https://github.com/akcansoft/Pixel-Color"))
+
+; Main menu
+mnu_Main := MenuBar()
+mnu_Main.Add(menuText.File, mnu_File)
+mnu_Main.Add(menuText.Settings, mnu_Settings)
+mnu_Main.Add(menuText.Palette, mnu_Palette)
+mnu_Main.Add(menuText.Help, mnu_Help)
+mGui.MenuBar := mnu_Main
+
+; ==============================
+; LEFT PANEL
+; ==============================
+; Color preview
+mGui.AddText("x" CONFIG.Ctl.X " y" CONFIG.Ctl.Y, "Color Preview:")
+pb_Color := mGui.AddProgress("x" CONFIG.Ctl.X " y" (CONFIG.Ctl.Y + 20) " w" CONFIG.Ctl.W " h" CONFIG.Ctl.H " Border")
+
+; Zoom preview
+txt_Zoom := mGui.AddText("x" CONFIG.Ctl.X " y+15", "Zoom Preview:")
 
 ; Zoom
-gridDisplay := GDIPlusGrid(mGui, 10, 200, APP.Size, APP.GridCol)
-
-; Zoom slider
-sld_Zoom := mGui.AddSlider("x10 y420 w216 Range1-" APP.ZoomSteps.Length " ToolTip", State.ZoomIdx)
-sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom(ctrl.Value, true))
+gridDisplay := GDIPlusGrid(mGui, CONFIG.Ctl.X, 200, CONFIG.Ctl.W, CONFIG.Colors.Grid)
 
 ; Zoom level
-txt_ZoomLevel := mGui.AddText("x10 y450 w216 Center", "Zoom : " State.ZoomLvl "x")
+txt_ZoomLevel := mGui.AddText("x" CONFIG.Ctl.X " y422 w" CONFIG.Ctl.W " Center", "Zoom : " State.ZoomLvl "x"
+)
 
-; Right panel
-;---------------------------------------------------------
-rX := 240 ; Right panel X offset
+; Zoom slider
+sld_Zoom := mGui.AddSlider("x" CONFIG.Ctl.X " y442 w" CONFIG.Ctl.W " Range1-" CONFIG.Zoom.Length " ToolTip",
+	State.ZoomIdx)
+sld_Zoom.OnEvent("Change", (ctrl, *) => ChangeZoom(ctrl.Value, true))
+
+; ==============================
+; MIDDLE PANEL
+; ==============================
+midX := 240 ; Middle panel X offset
 gbW := 280 ; Group box width
 
-chk_Zoom := mGui.AddCheckBox("x" rX " y10 Checked", "Zoom").OnEvent("Click", ToggleZoom)
+; Options
+chk_Zoom := mGui.AddCheckBox("x" midX " y10 Checked", "Zoom")
+chk_Zoom.OnEvent("Click", ToggleZoom)
+chk_GridLines := mGui.AddCheckBox("x+10 yp Checked", "Grid lines")
+chk_GridLines.OnEvent("Click", ToggleGridLines)
 chk_Upd := mGui.AddCheckBox("x+15 yp +Checked", "Update (F1)")
-mGui.AddCheckBox("x+15 yp +Checked", "Always on Top").OnEvent("Click", (ctrl, *) => WinSetAlwaysOnTop(ctrl.Value ? 1 :
-	0, mGui.Hwnd))
+chk_Upd.OnEvent("Click", ToggleUpdate)
+chk_AlwaysOnTop := mGui.AddCheckBox("x+15 yp +Checked", "Always on Top")
+chk_AlwaysOnTop.OnEvent("Click", ToggleAlwaysOnTop)
 
 ; Source info
-mGui.AddGroupBox("x" rX " y35 w" gbW " h130", "Source Info")
-txt_Position := mGui.AddText("x" rX + 10 " y55 w150", "Position: 0, 0")
+mGui.AddGroupBox("x" midX " y35 w" gbW " h130", "Source Info")
+txt_Position := mGui.AddText("x" midX + 10 " y55 w150", "Position: 0, 0")
 
 ; RGB color codes
 rgbTags := ["Red", "Grn", "Blu"], rgbLabels := ["Red:", "Green:", "Blue:"], rgbColors := ["cRed", "cLime", "cBlue"]
@@ -128,40 +215,56 @@ rgbCtl := Map() ; Store RGB control references for easy updates
 ; RGB color code boxes
 loop 3 {
 	yPos := 75 + (A_Index - 1) * 27
-	mGui.AddText("x" rX + 10 " y" yPos, rgbLabels[A_Index])
-	rgbCtl[rgbTags[A_Index] "Hex"] := mGui.AddEdit("x" rX + 50 " y" yPos - 3 " w35 " APP.EditBg)
-	rgbCtl[rgbTags[A_Index] "Dec"] := mGui.AddEdit("x+5 yp w35 " APP.EditBg)
-	rgbCtl[rgbTags[A_Index] "Pb"] := mGui.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " rgbColors[A_Index
-		])
+	AddRGBRow(mGui, midX, yPos, rgbLabels[A_Index], rgbTags[A_Index], rgbColors[A_Index], rgbCtl)
 }
 
 ; Color codes group box
-mGui.AddGroupBox("x" rX " y170 w" gbW " h280", "Color Codes")
+mGui.AddGroupBox("x" midX " y170 w" gbW " h280", "Color Codes")
 fields := ["Hex", "Dec", "Rgb", "RgbPercent", "Rgba", "Bgr", "Cmyk", "Hsl", "Hsv"]
 labels := ["HEX:", "DEC:", "RGB:", "RGB%:", "RGBA:", "BGR:", "CMYK:", "HSL:", "HSV:"]
-txtCtl := Map() ; Store color code control references for easy updates
+txtCtl := Map()
 
 ; Color code boxes
 loop fields.Length {
 	yPos := 190 + (A_Index - 1) * 25
-	mGui.AddText("x" rX + 10 " y" yPos, labels[A_Index])
-	txtCtl[fields[A_Index]] := mGui.AddEdit("x" rX + 50 " w160 y" yPos - 3 " " APP.EditBg)
-	mGui.AddButton("x+5 yp-1 w50 V" fields[A_Index], "Copy").OnEvent("Click", CopyToClipboard)
+	AddColorRow(mGui, midX, yPos, labels[A_Index], fields[A_Index], txtCtl)
 }
 
 ; Color name
-mGui.AddText("x" rX + 10 " y415", "Color Name:")
-txt_Cn := mGui.AddEdit("x" rX + 80 " y412 w130 " APP.EditBg)
-; Buttons
-mGui.AddButton("x+5 yp-1 w50 VCn", "Copy").OnEvent("Click", CopyToClipboard)
-mGui.AddButton("x" rX + 110 " y460 w80 h25", "About").OnEvent("Click", About)
-mGui.AddButton("x+5 yp w80 h25", "Close").OnEvent("Click", (*) => ExitApp())
+mGui.AddText("x" midX + 10 " y415", "Color Name:")
+txt_Cn := mGui.AddEdit("x" midX + 80 " y412 w140 " CONFIG.Colors.edtBg)
+mGui.AddButton("x+5 yp-1 VCn", "Copy").OnEvent("Click", CopyToClipboard)
+
+; ==============================
+; RIGHT PANEL
+; ==============================
+rpX := 530 ; Right panel X offset
+palW := 130 ; Palette panel width
+
+mGui.AddGroupBox("x" rpX " y35 w" palW " h420", "Palette")
+btn_AddColor := mGui.AddButton("x" rpX + 10 " y60 h25", "Add (F2)")
+btn_AddColor.OnEvent("Click", AddColorToPalette)
+btn_SortColors := mGui.AddButton("x+5 yp h25", "Sort")
+btn_SortColors.OnEvent("Click", SortPalette)
+
+; Palette cells
+palStartX := rpX + 10 ; Starting X position for palette cells
+palStartY := 95 ; Starting Y position for palette cells
+
+loop State.PaletteMax {
+	row := (A_Index - 1) // CONFIG.Palette.Cols
+	col := Mod(A_Index - 1, CONFIG.Palette.Cols)
+	x := palStartX + col * (CONFIG.Palette.CellSize + CONFIG.Palette.Gap)
+	y := palStartY + row * (CONFIG.Palette.CellSize + CONFIG.Palette.Gap)
+	State.PalCtl.Push(mGui.AddProgress("x" x " y" y " w" CONFIG.Palette.CellSize " h" CONFIG.Palette.CellSize " Border BackgroundF0F0F0"))
+}
 
 mGui.OnEvent("Close", (*) => ExitApp())
 OnMessage(0x020A, WM_MOUSEWHEEL) ; Mouse wheel zoom
-mGui.Show("w530 h500")
+mGui.Show("w670 h480")
 
 SetTimer(UpdateLoop, APP.Interval) ; Update loop
+RenderPalette()
 
 ; ========================================
 ; FUNCTIONS
@@ -216,7 +319,7 @@ RefreshGrid(x?, y?, z?) {
 
 	z := IsSet(z) ? z : State.ZoomLvl
 
-	try capture := GetScreenColors(x, y, z, APP.Size)
+	try capture := GetScreenColors(x, y, z, CONFIG.Ctl.W)
 	catch
 		return
 
@@ -257,37 +360,88 @@ RefreshColorInfo(x, y, c) {
 	hsxRes := RGBtoHSX(r, g, b)
 
 	hsl := RGBtoHSLFromHSX(hsxRes)
-	txtCtl["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l)
+	txtCtl["Hsl"].Value := Format("hsl({}, {}%, {}%)", hsl.h, hsl.s, hsl.l) ; HSL
 
 	hsv := RGBtoHSVFromHSX(hsxRes)
-	txtCtl["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v)
+	txtCtl["Hsv"].Value := Format("hsv({}, {}%, {}%)", hsv.h, hsv.s, hsv.v) ; HSV
 
-	txt_Cn.Value := GetColorName(colorHex)
+	txt_Cn.Value := GetColorName(colorHex) ; Color name
 }
 
 ; Toggles the zoom functionality on or off.
 ToggleZoom(ctrl, *) {
-	State.ZoomEnabled := ctrl.Value
-	gridDisplay.ctrl.Visible := ctrl.Value
-	sld_Zoom.Visible := ctrl.Value
-	txt_ZoomLevel.Visible := ctrl.Value
-	chk_GridLines.Visible := ctrl.Value
+	if IsObject(ctrl) && HasProp(ctrl, "Value") ; From Gui
+		State.ZoomEnabled := ctrl.Value
+	else { ; From Menu
+		State.ZoomEnabled := !State.ZoomEnabled
+		chk_Zoom.Value := State.ZoomEnabled
+	}
+
+	if (State.ZoomEnabled)
+		mnu_Settings.Check(menuText.ZoomPreview)
+	else
+		mnu_Settings.Uncheck(menuText.ZoomPreview)
+
+	gridDisplay.ctrl.Visible := State.ZoomEnabled
+	sld_Zoom.Visible := State.ZoomEnabled
+	txt_ZoomLevel.Visible := State.ZoomEnabled
+	chk_GridLines.Visible := State.ZoomEnabled
+	txt_Zoom.Visible := State.ZoomEnabled
 }
 
 ; Toggles the visibility of grid lines in the zoom preview.
 ToggleGridLines(ctrl, *) {
-	State.GridEnabled := ctrl.Value
+	if IsObject(ctrl) && HasProp(ctrl, "Value")
+		State.GridEnabled := ctrl.Value
+	else {
+		State.GridEnabled := !State.GridEnabled
+		chk_GridLines.Value := State.GridEnabled
+	}
+
+	if (State.GridEnabled)
+		mnu_Settings.Check(menuText.GridLines)
+	else
+		mnu_Settings.Uncheck(menuText.GridLines)
+
 	RefreshGrid()
+}
+
+; Toggles auto-update of color preview.
+ToggleUpdate(ctrl := 0, *) {
+	if !(IsObject(ctrl) && HasProp(ctrl, "Value"))
+		chk_Upd.Value := !chk_Upd.Value
+
+	if (chk_Upd.Value)
+		mnu_Settings.Check(menuText.AutoUpdate)
+	else
+		mnu_Settings.Uncheck(menuText.AutoUpdate)
+}
+
+; Toggles always-on-top state.
+ToggleAlwaysOnTop(ctrl, *) {
+	if IsObject(ctrl) && HasProp(ctrl, "Value")
+		val := ctrl.Value
+	else {
+		chk_AlwaysOnTop.Value := !chk_AlwaysOnTop.Value
+		val := chk_AlwaysOnTop.Value
+	}
+
+	WinSetAlwaysOnTop(val ? 1 : 0, mGui.Hwnd)
+
+	if (val)
+		mnu_Settings.Check(menuText.AlwaysOnTop)
+	else
+		mnu_Settings.Uncheck(menuText.AlwaysOnTop)
 }
 
 ; Changes the zoom level
 ChangeZoom(val, absolute := false) {
 	newIdx := absolute ? Round(val) : State.ZoomIdx + val
-	newIdx := Max(1, Min(APP.ZoomSteps.Length, newIdx))
+	newIdx := Max(1, Min(CONFIG.Zoom.Length, newIdx))
 
 	if (newIdx != State.ZoomIdx) {
 		State.ZoomIdx := newIdx
-		State.ZoomLvl := APP.ZoomSteps[State.ZoomIdx]
+		State.ZoomLvl := CONFIG.Zoom[State.ZoomIdx]
 		RefreshGrid()
 	}
 
@@ -312,6 +466,130 @@ CopyToClipboard(ctrl, *) {
 		A_Clipboard := val
 		ToolTip("Copied: " val)
 		SetTimer(() => ToolTip(), -1500)
+	}
+}
+
+; Adds the current sampled color to the palette (newest first in display).
+AddColorToPalette(*) {
+	if (State.LastC < 0)
+		return
+
+	colorHex := Format("{:06X}", State.LastC)
+
+	; Search and remove all existing instances of this color to ensure uniqueness.
+	; This also ensures that an existing color moves to the "newest" position.
+	i := 1
+	while i <= State.Palette.Length {
+		if (State.Palette[i] = colorHex)
+			State.Palette.RemoveAt(i)
+		else
+			i++
+	}
+
+	State.Palette.Push(colorHex)
+	if (State.Palette.Length > State.PaletteMax)
+		State.Palette.RemoveAt(1)
+
+	State.PaletteChanged := true
+	RenderPalette()
+}
+
+; Sorts palette colors visually from dark to light using perceptual luminance.
+SortPalette(*) {
+	if (State.Palette.Length <= 1) ; If palette has 0 or 1 color, do nothing
+		return
+
+	; Create a list of objects with hex and brightness (luminance)
+	colorData := []
+	for colorHex in State.Palette {
+		r := Integer("0x" SubStr(colorHex, 1, 2))
+		g := Integer("0x" SubStr(colorHex, 3, 2))
+		b := Integer("0x" SubStr(colorHex, 5, 2))
+
+		; Perceptual luminance formula: Human eye is most sensitive to green
+		lum := (0.299 * r) + (0.587 * g) + (0.114 * b)
+		colorData.Push({ hex: colorHex, lum: lum })
+	}
+
+	; Bubble sort for descending luminance (Brightest colors at the end of the array)
+	loop colorData.Length - 1 {
+		i := A_Index
+		loop colorData.Length - i {
+			j := A_Index
+			if (colorData[j].lum < colorData[j + 1].lum) {
+				temp := colorData[j]
+				colorData[j] := colorData[j + 1]
+				colorData[j + 1] := temp
+			}
+		}
+	}
+
+	; Rebuild the palette array
+	newPalette := []
+	for item in colorData
+		newPalette.Push(item.hex)
+
+	State.Palette := newPalette
+	State.PaletteChanged := true
+	RenderPalette()
+}
+
+; Draws palette cells from newest to oldest.
+RenderPalette() {
+	emptyColor := "F0F0F0"
+	pCount := State.Palette.Length
+
+	loop State.PaletteMax {
+		if (A_Index <= pCount) {
+			colorHex := State.Palette[pCount - A_Index + 1]
+		} else {
+			colorHex := emptyColor
+		}
+		State.PalCtl[A_Index].Opt("Background" colorHex)
+	}
+}
+
+LoadPaletteFromDisk() {
+	try raw := FileRead(APP.PaletteFile)
+	catch
+		raw := ""
+
+	raw := Trim(raw, " `t`r`n")
+	if (raw = "")
+		return
+
+	loaded := []
+	seen := Map()
+	for _, part in StrSplit(raw, ",") {
+		colorHex := StrUpper(Trim(part))
+		if (!RegExMatch(colorHex, "^[0-9A-F]{6}$"))
+			continue
+		if (seen.Has(colorHex))
+			continue
+		seen[colorHex] := true
+		loaded.Push(colorHex)
+	}
+
+	while (loaded.Length > State.PaletteMax)
+		loaded.RemoveAt(1)
+
+	State.Palette := loaded
+}
+
+SavePaletteToDisk(*) {
+	if (!State.PaletteChanged) ; No changes since last save, skip writing to disk
+		return
+
+	serialized := ""
+	for idx, colorHex in State.Palette
+		serialized .= (idx > 1 ? "," : "") colorHex
+
+	try {
+		f := FileOpen(APP.PaletteFile, "w")
+		if IsObject(f) {
+			f.Write(serialized)
+			f.Close()
+		}
 	}
 }
 
@@ -456,7 +734,8 @@ GetScreenColors(cX, cY, zoom, frameSize) {
 			bltH := validY2 - validY1 + 1
 			dstX := validX1 - srcX
 			dstY := validY1 - srcY
-			DllCall("BitBlt", "Ptr", mDC, "Int", dstX, "Int", dstY, "Int", bltW, "Int", bltH, "Ptr", hDC, "Int", validX1,
+			DllCall("BitBlt", "Ptr", mDC, "Int", dstX, "Int", dstY, "Int", bltW, "Int", bltH, "Ptr", hDC, "Int",
+				validX1,
 				"Int", validY1, "UInt", 0x00CC0020)
 		}
 
@@ -522,39 +801,42 @@ RGBtoHSVFromHSX(res) {
 ; Retrieves the standard color name
 GetColorName(hexColor) {
 	static colorNames := Map(
-		"F0F8FF", "AliceBlue", "FAEBD7", "AntiqueWhite", "00FFFF", "Aqua", "7FFFD4", "Aquamarine",
-		"F0FFFF", "Azure", "F5F5DC", "Beige", "FFE4C4", "Bisque", "000000", "Black", "FFEBCD", "BlanchedAlmond",
-		"0000FF", "Blue", "8A2BE2", "BlueViolet", "A52A2A", "Brown", "DEB887", "BurlyWood", "5F9EA0", "CadetBlue",
-		"7FFF00", "Chartreuse", "D2691E", "Chocolate", "FF7F50", "Coral", "6495ED", "CornflowerBlue",
-		"FFF8DC", "Cornsilk", "DC143C", "Crimson", "00FFFF", "Cyan", "00008B", "DarkBlue", "008B8B", "DarkCyan",
-		"B8860B", "DarkGoldenRod", "A9A9A9", "DarkGray", "006400", "DarkGreen", "BDB76B", "DarkKhaki",
-		"8B008B", "DarkMagenta", "556B2F", "DarkOliveGreen", "FF8C00", "DarkOrange", "9932CC", "DarkOrchid",
-		"8B0000", "DarkRed", "E9967A", "DarkSalmon", "8FBC8F", "DarkSeaGreen", "483D8B", "DarkSlateBlue",
-		"2F4F4F", "DarkSlateGray", "00CED1", "DarkTurquoise", "9400D3", "DarkViolet", "FF1493", "DeepPink",
-		"00BFFF", "DeepSkyBlue", "696969", "DimGray", "1E90FF", "DodgerBlue", "B22222", "FireBrick",
-		"FFFAF0", "FloralWhite", "228B22", "ForestGreen", "FF00FF", "Fuchsia", "DCDCDC", "Gainsboro",
-		"F8F8FF", "GhostWhite", "FFD700", "Gold", "DAA520", "GoldenRod", "808080", "Gray", "008000", "Green",
-		"ADFF2F", "GreenYellow", "F0FFF0", "HoneyDew", "FF69B4", "HotPink", "CD5C5C", "IndianRed",
-		"4B0082", "Indigo", "FFFFF0", "Ivory", "F0E68C", "Khaki", "E6E6FA", "Lavender", "FFF0F5", "LavenderBlush",
-		"7CFC00", "LawnGreen", "FFFACD", "LemonChiffon", "ADD8E6", "LightBlue", "F08080", "LightCoral",
-		"E0FFFF", "LightCyan", "FAFAD2", "LightGoldenRodYellow", "D3D3D3", "LightGray", "90EE90", "LightGreen",
-		"FFB6C1", "LightPink", "FFA07A", "LightSalmon", "20B2AA", "LightSeaGreen", "87CEFA", "LightSkyBlue",
-		"778899", "LightSlateGray", "B0C4DE", "LightSteelBlue", "FFFFE0", "LightYellow", "00FF00", "Lime",
-		"32CD32", "LimeGreen", "FAF0E6", "Linen", "FF00FF", "Magenta", "800000", "Maroon",
-		"66CDAA", "MediumAquaMarine", "0000CD", "MediumBlue", "BA55D3", "MediumOrchid", "9370DB", "MediumPurple",
-		"3CB371", "MediumSeaGreen", "7B68EE", "MediumSlateBlue", "00FA9A", "MediumSpringGreen", "48D1CC",
-		"MediumTurquoise", "C71585", "MediumVioletRed", "191970", "MidnightBlue", "F5FFFA", "MintCream",
-		"FFE4E1", "MistyRose", "FFE4B5", "Moccasin", "FFDEAD", "NavajoWhite", "000080", "Navy",
-		"FDF5E6", "OldLace", "808000", "Olive", "6B8E23", "OliveDrab", "FFA500", "Orange", "FF4500", "OrangeRed",
-		"DA70D6", "Orchid", "EEE8AA", "PaleGoldenRod", "98FB98", "PaleGreen", "AFEEEE", "PaleTurquoise",
-		"DB7093", "PaleVioletRed", "FFEFD5", "PapayaWhip", "FFDAB9", "PeachPuff", "CD853F", "Peru",
-		"FFC0CB", "Pink", "DDA0DD", "Plum", "B0E0E6", "PowderBlue", "800080", "Purple", "663399", "RebeccaPurple",
-		"FF0000", "Red", "BC8F8F", "RosyBrown", "4169E1", "RoyalBlue", "8B4513", "SaddleBrown",
-		"FA8072", "Salmon", "F4A460", "SandyBrown", "2E8B57", "SeaGreen", "FFF5EE", "SeaShell",
-		"A0522D", "Sienna", "C0C0C0", "Silver", "87CEEB", "SkyBlue", "6A5ACD", "SlateBlue", "708090", "SlateGray",
-		"FFFAFA", "Snow", "00FF7F", "SpringGreen", "4682B4", "SteelBlue", "D2B48C", "Tan", "008080", "Teal",
-		"D8BFD8", "Thistle", "FF6347", "Tomato", "40E0D0", "Turquoise", "EE82EE", "Violet", "F5DEB3", "Wheat",
-		"FFFFFF", "White", "F5F5F5", "WhiteSmoke", "FFFF00", "Yellow", "9ACD32", "YellowGreen"
+		"000000", "Black", "000080", "Navy", "00008B", "DarkBlue", "0000CD", "MediumBlue",
+		"0000FF", "Blue", "006400", "DarkGreen", "008000", "Green", "008080", "Teal",
+		"008B8B", "DarkCyan", "00BFFF", "DeepSkyBlue", "00CED1", "DarkTurquoise", "00FA9A", "MediumSpringGreen",
+		"00FF00", "Lime", "00FF7F", "SpringGreen", "00FFFF", "Cyan",
+		"191970", "MidnightBlue", "1E90FF", "DodgerBlue", "20B2AA", "LightSeaGreen", "228B22", "ForestGreen",
+		"2E8B57", "SeaGreen", "2F4F4F", "DarkSlateGray", "32CD32", "LimeGreen", "3CB371", "MediumSeaGreen",
+		"40E0D0", "Turquoise", "4169E1", "RoyalBlue", "4682B4", "SteelBlue", "483D8B", "DarkSlateBlue",
+		"48D1CC", "MediumTurquoise", "4B0082", "Indigo", "556B2F", "DarkOliveGreen", "5F9EA0", "CadetBlue",
+		"6495ED", "CornflowerBlue", "663399", "RebeccaPurple", "66CDAA", "MediumAquaMarine", "696969", "DimGray",
+		"6A5ACD", "SlateBlue", "6B8E23", "OliveDrab", "708090", "SlateGray", "778899", "LightSlateGray",
+		"7B68EE", "MediumSlateBlue", "7CFC00", "LawnGreen", "7FFF00", "Chartreuse", "7FFFD4", "Aquamarine",
+		"800000", "Maroon", "800080", "Purple", "808000", "Olive", "808080", "Gray",
+		"87CEEB", "SkyBlue", "87CEFA", "LightSkyBlue", "8A2BE2", "BlueViolet", "8B0000", "DarkRed",
+		"8B008B", "DarkMagenta", "8B4513", "SaddleBrown", "8FBC8F", "DarkSeaGreen", "90EE90", "LightGreen",
+		"9370DB", "MediumPurple", "9400D3", "DarkViolet", "98FB98", "PaleGreen", "9932CC", "DarkOrchid",
+		"9ACD32", "YellowGreen", "A0522D", "Sienna", "A52A2A", "Brown", "A9A9A9", "DarkGray",
+		"ADD8E6", "LightBlue", "ADFF2F", "GreenYellow", "AFEEEE", "PaleTurquoise", "B0C4DE", "LightSteelBlue",
+		"B0E0E6", "PowderBlue", "B22222", "FireBrick", "B8860B", "DarkGoldenRod", "BA55D3", "MediumOrchid",
+		"BC8F8F", "RosyBrown", "BDB76B", "DarkKhaki", "C0C0C0", "Silver", "C71585", "MediumVioletRed",
+		"CD5C5C", "IndianRed", "CD853F", "Peru", "D2691E", "Chocolate", "D2B48C", "Tan",
+		"D3D3D3", "LightGray", "D8BFD8", "Thistle", "DA70D6", "Orchid", "DAA520", "GoldenRod",
+		"DB7093", "PaleVioletRed", "DC143C", "Crimson", "DCDCDC", "Gainsboro", "DDA0DD", "Plum",
+		"DEB887", "BurlyWood", "E0FFFF", "LightCyan", "E6E6FA", "Lavender", "E9967A", "DarkSalmon",
+		"EE82EE", "Violet", "EEE8AA", "PaleGoldenRod", "F08080", "LightCoral", "F0E68C", "Khaki",
+		"F0F8FF", "AliceBlue", "F0FFF0", "HoneyDew", "F0FFFF", "Azure", "F4A460", "SandyBrown",
+		"F5DEB3", "Wheat", "F5F5DC", "Beige", "F5F5F5", "WhiteSmoke", "F5FFFA", "MintCream",
+		"F8F8FF", "GhostWhite", "FA8072", "Salmon", "FAEBD7", "AntiqueWhite", "FAF0E6", "Linen",
+		"FAFAD2", "LightGoldenRodYellow", "FDF5E6", "OldLace", "FF0000", "Red", "FF00FF", "Magenta",
+		"FF1493", "DeepPink", "FF4500", "OrangeRed", "FF6347", "Tomato",
+		"FF69B4", "HotPink", "FF7F50", "Coral", "FF8C00", "DarkOrange", "FFA07A", "LightSalmon",
+		"FFA500", "Orange", "FFB6C1", "LightPink", "FFC0CB", "Pink", "FFD700", "Gold",
+		"FFDAB9", "PeachPuff", "FFDEAD", "NavajoWhite", "FFE4B5", "Moccasin", "FFE4C4", "Bisque",
+		"FFE4E1", "MistyRose", "FFEBCD", "BlanchedAlmond", "FFEFD5", "PapayaWhip", "FFF0F5", "LavenderBlush",
+		"FFF5EE", "SeaShell", "FFF8DC", "Cornsilk", "FFFACD", "LemonChiffon", "FFFAF0", "FloralWhite",
+		"FFFAFA", "Snow", "FFFF00", "Yellow", "FFFFE0", "LightYellow", "FFFFF0", "Ivory",
+		"FFFFFF", "White"
 	)
 	return colorNames.Has(hexColor) ? colorNames[hexColor] : ""
 }
@@ -562,15 +844,15 @@ GetColorName(hexColor) {
 ; Displays the 'About' dialog box
 About(*) {
 	msg := Format("
-(
-{} v{}`n
-©2026 Mesut Akcan 
-makcan@gmail.com
-github.com/akcansoft
-mesutakcan.blogspot.com
-youtube.com/mesutakcan
-)",
-		APP.Name, APP.Ver)
+	(
+		{} v{}`n
+		©2026 Mesut Akcan 
+		makcan@gmail.com
+		github.com/akcansoft
+		mesutakcan.blogspot.com
+		youtube.com/mesutakcan
+	)",
+	APP.Name, APP.Ver)
 
 	MsgBox(msg, APP.Name, "Icon 64 Owner" mGui.Hwnd)
 }
@@ -598,6 +880,21 @@ InitDpiAwareness() {
 	} else {
 		g_UsePhysicalCoords := false
 	}
+}
+
+; Adds a row of RGB controls (Label, Hex edit, Dec edit, Progress bar)
+AddRGBRow(guiObj, x, y, label, tag, color, controls) {
+	guiObj.AddText("x" x + 10 " y" y, label)
+	controls[tag "Hex"] := guiObj.AddEdit("x" x + 50 " y" y - 3 " w35 " CONFIG.Colors.edtBg)
+	controls[tag "Dec"] := guiObj.AddEdit("x+5 yp w35 " CONFIG.Colors.edtBg)
+	controls[tag "Pb"] := guiObj.AddProgress("x+10 yp w130 BackgroundDDDDDD Range0-255 h22 " color)
+}
+
+; Adds a row of color code controls (Label, Edit box, Copy button)
+AddColorRow(guiObj, x, y, label, field, controls) {
+	guiObj.AddText("x" x + 10 " y" y, label)
+	controls[field] := guiObj.AddEdit("x" x + 50 " w170 y" y - 3 " " CONFIG.Colors.edtBg)
+	guiObj.AddButton("x+5 yp-1 V" field, "Copy").OnEvent("Click", CopyToClipboard)
 }
 
 ; ========================================
@@ -657,7 +954,8 @@ class GDIPlusGrid {
 		off := Floor((this.pSize - actSize) / 2) ; Integer align to keep image and grid on same pixel boundaries
 
 		pSrc := 0
-		if (DllCall("gdiplus\GdipCreateBitmapFromHBITMAP", "Ptr", hSrcBM, "Ptr", 0, "Ptr*", &pSrc := 0, "Int") = 0 && pSrc
+		if (DllCall("gdiplus\GdipCreateBitmapFromHBITMAP", "Ptr", hSrcBM, "Ptr", 0, "Ptr*", &pSrc := 0, "Int") = 0 &&
+			pSrc
 		) {
 			DllCall("gdiplus\GdipDrawImageRectRect", "Ptr", this.pG, "Ptr", pSrc, "Float", off, "Float", off, "Float",
 				actSize, "Float", actSize, "Float", 0.0, "Float", 0.0, "Float", count, "Float", count, "Int", 2, "Ptr",
