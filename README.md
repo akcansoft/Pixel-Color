@@ -1,9 +1,9 @@
-# AS Pixel Color v2.4
+# AS Pixel Color v2.5
 
 [![AutoHotkey](https://img.shields.io/badge/Language-AutoHotkey_v2-green.svg)](https://www.autohotkey.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://www.microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-GPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.4-brightgreen.svg)](https://github.com/akcansoft/Pixel-Color/releases) 
+[![Version](https://img.shields.io/badge/Version-2.5-brightgreen.svg)](https://github.com/akcansoft/Pixel-Color/releases) 
 
 ![GitHub stars](https://img.shields.io/github/stars/akcansoft/Pixel-Color?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/akcansoft/Pixel-Color?style=social)
@@ -26,14 +26,17 @@
 - **Extensive Color Format Support:** HEX, DEC, RGB, RGB (%), RGBA, BGR, CMYK, HSL, and HSV.
 - **Color Name Recognition:** Detects standard named colors (e.g., AliceBlue, Crimson) instantly.
 - **Detailed RGB Analysis:** Displays channel values numerically and with visual progress bars that change color based on intensity.
-- **Precision Shortcuts:** Custom hotkeys for micro-movements and quick actions.
+- **Configurable Hotkeys:** F1/F2 shortcut keys can be customized via `settings.ini`.
+- **Unified Settings Persistence:** All settings (zoom, grid, auto-update, always-on-top) and the palette are saved and restored from a single `settings.ini` file.
+- **Keyboard Shortcuts Dialog:** View all active shortcuts at a glance via Help → Keyboard Shortcuts.
+- **Precision Shortcuts:** Custom hotkeys for micro-movements and quick actions, scoped to the main window to avoid conflicts.
 
 ## ⌨️ Shortcuts and Usage
 
 1. **Track Motion:** Move the mouse anywhere on screen to inspect the current pixel in real time.
 2. **Pause/Resume Updates:** Press <kbd>F1</kbd> to toggle live updates (or use the Update checkbox/menu).
 3. **Save Color to Palette:** Press <kbd>F2</kbd> (or use the Add button/menu) to save the current color.
-4. **Precision Mouse Move:**
+4. **Precision Mouse Move** *(main window must be active)*:
    - <kbd>Ctrl</kbd> + <kbd>Arrow Keys</kbd>: Move the cursor by **1 pixel**.
    - <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Arrow Keys</kbd>: Move the cursor by **10 pixels**.
 5. **Adjust Zoom:**
@@ -43,6 +46,9 @@
    - Use the **Zoom** checkbox/menu to show/hide zoom preview.
    - Use **Grid lines** checkbox/menu to switch grid overlay on/off.
 7. **Copy Values:** Click any `Copy` button to send the selected value to clipboard.
+8. **View Shortcuts:** Use **Help → Keyboard Shortcuts** to see all active key bindings.
+
+> **Note:** F1 and F2 hotkeys are configurable via `settings.ini` (`[Hotkeys]` section). They are scoped to the main window and do not conflict with other applications.
 
 ## 🛠️ Technical Setup
 
@@ -58,6 +64,13 @@ Download and run the `.exe` file for your system from the [releases](https://git
 4. Run the script by double-clicking the `.ahk` file.
 
 ## 📝 Version History
+
+- **v2.5 (2026-02-20):**
+  - Replaced `palette.txt` with a unified `settings.ini` file that persists **all** application state: zoom level, zoom/grid/auto-update/always-on-top toggles, and the color palette.
+  - Added **configurable hotkeys**: F1 (Toggle Update) and F2 (Add Color) can now be reassigned via `settings.ini` under the `[Hotkeys]` section.
+  - Added **Keyboard Shortcuts** dialog (Help → Keyboard Shortcuts) showing all active key bindings.
+  - Scoped F1/F2 hotkeys to the main window only (no longer global), preventing conflicts with other applications.
+  - Arrow-key precision movement hotkeys also scoped to main window active state.
 
 - **v2.4 (2026-02-17):**
   - Added **Color Palette system** with persistence (`palette.txt`).
@@ -98,13 +111,13 @@ Download and run the `.exe` file for your system from the [releases](https://git
 - **v1.0 (2024-03-20):**
   - Initial release.
 
-## 🤝 Contributing
-
-Contributions are welcome. Open a [pull request](https://github.com/akcansoft/Pixel-Color/pulls) or submit an [issue](https://github.com/akcansoft/Pixel-Color/issues) to suggest features or report bugs.
-
 ## 👤 Author
 
 **Mesut Akcan**  
 Email: [makcan@gmail.com](mailto:makcan@gmail.com)  
 Blog: [akcanSoft Blog](https://akcansoft.blogspot.com) | [Mesut Akcan Blog](https://mesutakcan.blogspot.com)\
 YouTube: [YouTube Channel](https://www.youtube.com/mesutakcan)
+
+## 🤝 Contributing
+
+Contributions are welcome. Open a [pull request](https://github.com/akcansoft/Pixel-Color/pulls) or submit an [issue](https://github.com/akcansoft/Pixel-Color/issues) to suggest features or report bugs.
