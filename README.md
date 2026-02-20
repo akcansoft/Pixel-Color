@@ -59,9 +59,9 @@ Download and run the `.exe` file for your system from the [releases](https://git
 ### Running from Source
 
 1. Install [AutoHotkey v2](https://www.autohotkey.com).
-2. Download the source `.ahk` file and `app_icon.ico` from the [src/](https://github.com/akcansoft/Pixel-Color/tree/main/src) folder.
+2. Download the source `AS Pixel Color.ahk`, `color_names.ahk` and `app_icon.ico` files from the [src/](https://github.com/akcansoft/Pixel-Color/tree/main/src) folder.
 3. Place required files in the same directory.
-4. Run the script by double-clicking the `.ahk` file.
+4. Run the script by double-clicking the `AS Pixel Color.ahk` file.
 
 ## 📝 Version History
 
